@@ -105,6 +105,8 @@ void ElasFlow::initializeLevelIntegrator(
   // 内存构件： 管理数据片的内存开辟及释放
   d_alloc_data = new algs::MemoryIntegratorComponent<NDIM>(
         "ALLOC", d_patch_strategy, manager);
+  d_alloc_fluid_data = new algs::MemoryIntegratorComponent<NDIM>(
+        "ALLOC_F", d_patch_strategy, manager);
 
   //update #6
   // 步长构件： 计算时间步长

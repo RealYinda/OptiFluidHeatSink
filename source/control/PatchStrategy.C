@@ -312,6 +312,41 @@ void PatchStrategy::registerModelVariable() {
   d_Cell_volume_id=db->registerVariableAndContext(Cell_volume, current,1);
 
 
+  /**********************************************************************
+   * 流体力学计算模块
+   * 层流模型的变量
+   **********************************************************************/
+  // 流体自由度信息，仅在节点（Node）上存在自由度
+  d_dof_info_fluid = new solv::DOFInfo<NDIM>(true, false, false, false);
+
+  //  DECLARE_MATVEC_VARIABLE(dual_solution, Vector, double, d_dof_info);  // 向量变量， 解向量
+  //   DECLARE_MATVEC_VARIABLE(dual_rhs, Vector, double, d_dof_info);  // 向量变量， 右端项
+  //   DECLARE_MATVEC_VARIABLE(dual_matrix, CSRMatrix, double, d_dof_info);  // 矩阵变量， 矩阵
+  //   REGISTER_VARIABLE(d_dual_STRESS_solution_id, dual_solution, current, 1);
+  //   REGISTER_VARIABLE(d_dual_STRESS_rhs_id, dual_rhs, current, 1);
+
+  /// 流体方程的解向量
+  DECLARE_MATVEC_VARIABLE(fluid_solution,Vector,double,d_dof_info_fluid);
+  REGISTER_VARIABLE(F_solution_id,fluid_solution,current,1);
+  /// 流体方程的Delta u向量
+  DECLARE_MATVEC_VARIABLE(fluid_delta,Vector,double,d_dof_info_fluid);
+  REGISTER_VARIABLE(F_delta_id,fluid_delta,current,1);
+  /// 流体方程的右端项
+  DECLARE_MATVEC_VARIABLE(fluid_rhs,Vector,double,d_dof_info_fluid);
+  REGISTER_VARIABLE(F_rhs_id,fluid_solution,current,1);
+  /// 流体方程的系统矩阵
+  DECLARE_MATVEC_VARIABLE(fluid_matrix,CSRMatrix,double,d_dof_info_fluid);
+  REGISTER_VARIABLE(F_matrix_id,fluid_matrix,current,1);
+  /// 流速场的变量声明
+  DECLARE_VARIABLE(velocity_plot,Node,double,NDIM,1);
+  /// 压力场的变量声明
+  DECLARE_VARIABLE(pressure_plot,Node,double,1,1);
+
+  REGISTER_VARIABLE(F_vel_plot_id,velocity_plot,current,1);
+  REGISTER_VARIABLE(F_pre_plot_id,pressure_plot,current,1);
+
+
+
 }
 
 
@@ -359,7 +394,14 @@ void PatchStrategy::initializeComponent(
     d_dof_info->registerToInitComponent(component);
     //update #8 @4
     d_dof_info_th->registerToInitComponent(component);
-  } else if (component_name == "ALLOC") {  // 内存构件.
+  } else if (component_name == "ALLOC_F") {
+    /// 内存构件，流体力学
+    component->registerPatchData(F_matrix_id);
+    component->registerPatchData(F_solution_id);
+    component->registerPatchData(F_rhs_id);
+    component->registerPatchData(F_delta_id);
+  } else if (component_name == "ALLOC") {
+    /// 内存构件（默认）
     component->registerPatchData(d_matrix_id);
     component->registerPatchData(d_solution_id);
     component->registerPatchData(d_rhs_id);
@@ -599,6 +641,8 @@ void PatchStrategy::initializePatchData(hier::Patch<NDIM>& patch,
     int Alloy_id_len=sizeof(Alloy_id)/sizeof(Alloy_id[0]);
     int Silicon_id_len=sizeof(Silicon_id)/sizeof(Silicon_id[0]);
 
+    int water_id_len = sizeof(water_id)/sizeof(water_id[0]);
+
 
     for(int e_id=1;e_id<(ENTITY_NUM+1);e_id++)
     {
@@ -646,6 +690,10 @@ void PatchStrategy::initializePatchData(hier::Patch<NDIM>& patch,
       for(int m_id=0;m_id<SiO2_id_len;m_id++)
         if((*entityid_data)(0,iii)==SiO2_id[m_id])
         {(*materialid_data)(0,iii)=4;}
+
+      for(int m_id=0;m_id<water_id_len;m_id++)
+        if((*entityid_data)(0,iii)==water_id[m_id])
+        {(*materialid_data)(0,iii)=101;}
 
 
 

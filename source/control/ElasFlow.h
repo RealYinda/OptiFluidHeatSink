@@ -147,6 +147,9 @@ private:
   /*!@brief 内存构件: 为矩阵向量开辟内存 */
   tbox::Pointer<algs::MemoryIntegratorComponent<NDIM> > d_alloc_data;
 
+  /// 为流体力学方程开辟内存
+  tbox::Pointer<algs::MemoryIntegratorComponent<NDIM> > d_alloc_fluid_data;
+
   /*!@brief 数值构件: 计算矩阵 */
   tbox::Pointer<algs::NumericalIntegratorComponent<NDIM> > d_num_intc_mat;
 

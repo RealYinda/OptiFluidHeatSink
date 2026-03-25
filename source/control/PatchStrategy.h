@@ -675,7 +675,8 @@ private:
 
   //update #8 @1
   tbox::Pointer<solv::DOFInfo<NDIM> > d_dof_info_th;
-
+  /// 流体的自由度信息
+  tbox::Pointer<solv::DOFInfo<NDIM> > d_dof_info_fluid;
   tbox::Array<string> d_element_type; /**< 单元类型 */
   tbox::Array<int> d_element_marks;   /**< 单元的标示 */
 
@@ -734,6 +735,20 @@ private:
   int E_rhs_id;
   int E_plot_id;
   int E_mag_id;//单元电场模值
+
+  /// Stokes矩阵和Jacobian矩阵
+  int F_matrix_id;
+  /// 当前迭代步的解
+  int F_solution_id;
+  /// \Delta \bm{u}速度场的增量解
+  int F_delta_id;
+  /// 右端项
+  int F_rhs_id;
+  /// 结点流速
+  int F_vel_plot_id;
+  /// 结点压力
+  int F_pre_plot_id;
+
 
   int material_num_id;
 

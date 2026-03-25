@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.3)
 
-project(ThermalSolver CXX C Fortran)
+project(OptiFluidHeat CXX C Fortran)
 
 set(NDIM 3)
 set(CREL dbg)

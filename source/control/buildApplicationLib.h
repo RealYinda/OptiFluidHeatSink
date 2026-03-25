@@ -62,6 +62,7 @@ void buildApplicationLib() {
   //@material_2:copper
   //@material_3:gold
   //@material_4:SiO2
+  //添加液体到材料管理
   //time:2017-04-20 @tong update #2
   //////////////////////////////////////////////////////////////
   tbox::Pointer<Material> material_0 = new Material("Air");
@@ -100,6 +101,10 @@ void buildApplicationLib() {
   material_manager->addMaterial(material_16);
   tbox::Pointer<Material> material_17 = new Material("Alloy");
   material_manager->addMaterial(material_17);
+
+
+  tbox::Pointer<Material> material_101 = new Material("Water");
+  material_manager->addMaterial(material_101);
 
   /// 添加一个形函数到形函数管理器.
   tbox::Pointer<BaseShapeFunction<NDIM> > func =

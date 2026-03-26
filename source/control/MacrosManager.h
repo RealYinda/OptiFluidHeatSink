@@ -85,7 +85,7 @@ const int Alloy_id[]={3,6,5009,5012};//4
 const int SiO2_id[]={1,2,5,8,11};//5
 //const int MoCu_id=1;
 //const int SiO2_id[]={};
-const int water_id[]={0};
+const int Water_id[]={0};
 
 
 // @  update #7 2017-05-06
@@ -285,7 +285,7 @@ const double Aluminum_Param_T[9][5]=
 };
 
 // H2O 水 (常温 20°C, 1 atm)
-const double water_Param_T[9][5]=
+const double Water_Param_T[9][5]=
 {
         {5.5e-6,     0, 0, 0, 0},  // 电导率 (纯水极低；若是自来水或掺杂冷却液，约在 0.005 ~ 0.05 之间)
         {80.1,       0, 0, 0, 0},  // 介电常数

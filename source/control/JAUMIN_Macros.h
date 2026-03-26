@@ -88,7 +88,7 @@
   (ID) == 15 ? "GaN"     : \
   (ID) == 16 ? "Al2O3"   : \
   (ID) == 17 ? "Alloy"   : \
-  (ID) == 101 ? "water"   : \
+  (ID) == 101 ? "Water"   : \
   "Gold") // 默认值包含 case 3 和 default
   
 #endif  // included_JAUMIN_Macros

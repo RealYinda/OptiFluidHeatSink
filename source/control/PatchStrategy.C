@@ -157,24 +157,24 @@ void PatchStrategy::registerModelVariable() {
   /// 取出有限元变量数据库.
   hier::VariableDatabase<NDIM>* db = hier::VariableDatabase<NDIM>::getDatabase();
   /// 自由度信息，参数介绍：四个bool型表示点，边，面，体上是否有自由度存在
-  d_dof_info = new solv::DOFInfo<NDIM>(true, false, false, false);
+  M_dof_info = new solv::DOFInfo<NDIM>(true, false, false, false);
   //update #8 @1
-  d_dof_info_th = new solv::DOFInfo<NDIM>(true, false, false, false);
+  T_dof_info = new solv::DOFInfo<NDIM>(true, false, false, false);
 
   /// 取出变量上下文.
   tbox::Pointer<hier::VariableContext> current = db->getContext("CURRENT");
 
   /// 有限元矩阵型变量.
   tbox::Pointer<pdat::CSRMatrixVariable<NDIM, double> > matrix =
-      new pdat::CSRMatrixVariable<NDIM, double>("elas_matrix", d_dof_info);
+      new pdat::CSRMatrixVariable<NDIM, double>("elas_matrix", M_dof_info);
 
   /// 有限元向量型变量.
   tbox::Pointer<pdat::VectorVariable<NDIM, double> >
       solution /**< 解向量，位移解 */
-      = new pdat::VectorVariable<NDIM, double>("elas_solution", d_dof_info);
+      = new pdat::VectorVariable<NDIM, double>("elas_solution", M_dof_info);
 
   tbox::Pointer<pdat::VectorVariable<NDIM, double> > rhs /**< 右端项 */
-      = new pdat::VectorVariable<NDIM, double>("elas_rhs", d_dof_info);
+      = new pdat::VectorVariable<NDIM, double>("elas_rhs", M_dof_info);
 
   tbox::Pointer<hier::Variable<NDIM> > stress /**< 应力张量 绘图量*/
       = new pdat::CellVariable<NDIM, double>("elas_stress", 2 * NDIM);
@@ -199,24 +199,24 @@ void PatchStrategy::registerModelVariable() {
   //都需要数据通信
   tbox::Pointer<pdat::VectorVariable<NDIM, double> >
       solution_old /**< 前一个时刻的解向量，位移解 */
-      = new pdat::VectorVariable<NDIM, double>("elas_solution_old", d_dof_info);
+      = new pdat::VectorVariable<NDIM, double>("elas_solution_old", M_dof_info);
   tbox::Pointer<pdat::VectorVariable<NDIM, double> >
       solution_older /**< 前两个时刻的解向量，位移解 */
-      = new pdat::VectorVariable<NDIM, double>("elas_solution_older", d_dof_info);
+      = new pdat::VectorVariable<NDIM, double>("elas_solution_older", M_dof_info);
   tbox::Pointer<pdat::VectorVariable<NDIM, double> > rhs_old /**< 右端项前一个时刻的值 */
-      = new pdat::VectorVariable<NDIM, double>("elas_rhs_old", d_dof_info);
+      = new pdat::VectorVariable<NDIM, double>("elas_rhs_old", M_dof_info);
   tbox::Pointer<pdat::VectorVariable<NDIM, double> > rhs_older /**< 右端项前两个时刻的值 */
-      = new pdat::VectorVariable<NDIM, double>("elas_rhs_older", d_dof_info);
+      = new pdat::VectorVariable<NDIM, double>("elas_rhs_older", M_dof_info);
 
   //update #8 @2 定义热求解相关变量  矩阵 右端项 解向量
   /// 矩阵变量， 矩阵
   tbox::Pointer<pdat::CSRMatrixVariable<NDIM, double> > thermal_matrix =
-      new pdat::CSRMatrixVariable<NDIM, double>("thermal_matrix", d_dof_info_th);
+      new pdat::CSRMatrixVariable<NDIM, double>("thermal_matrix", T_dof_info);
   tbox::Pointer<pdat::VectorVariable<NDIM, double> > thermal_rhs =
-      new pdat::VectorVariable<NDIM, double>("thermal_rhs", d_dof_info_th);
+      new pdat::VectorVariable<NDIM, double>("thermal_rhs", T_dof_info);
   /// 向量变量， 解向量
   tbox::Pointer<pdat::VectorVariable<NDIM, double> > thermal_solution =
-      new pdat::VectorVariable<NDIM, double>("thermal_solution", d_dof_info_th);
+      new pdat::VectorVariable<NDIM, double>("thermal_solution", T_dof_info);
   // 结点型变量，可视化数据片 绘图量
   tbox::Pointer<pdat::NodeVariable<NDIM, double> > temperature_plot =
       new pdat::NodeVariable<NDIM, double>("temperature_plot", 1);
@@ -230,12 +230,12 @@ void PatchStrategy::registerModelVariable() {
   //update #9  定义电求解相关变量  矩阵 右端项 解向量
   /// 矩阵变量， 矩阵
   tbox::Pointer<pdat::CSRMatrixVariable<NDIM, double> > electric_matrix =
-      new pdat::CSRMatrixVariable<NDIM, double>("electric_matrix", d_dof_info_th);
+      new pdat::CSRMatrixVariable<NDIM, double>("electric_matrix", T_dof_info);
   tbox::Pointer<pdat::VectorVariable<NDIM, double> > electric_rhs =
-      new pdat::VectorVariable<NDIM, double>("electric_rhs", d_dof_info_th);
+      new pdat::VectorVariable<NDIM, double>("electric_rhs", T_dof_info);
   /// 向量变量， 解向量
   tbox::Pointer<pdat::VectorVariable<NDIM, double> > electric_solution =
-      new pdat::VectorVariable<NDIM, double>("electric_solution", d_dof_info_th);
+      new pdat::VectorVariable<NDIM, double>("electric_solution", T_dof_info);
   // 结点型变量，可视化数据片  绘图量
   tbox::Pointer<pdat::NodeVariable<NDIM, double> > voltage_plot =
       new pdat::NodeVariable<NDIM, double>("voltage_plot", 1);
@@ -250,8 +250,8 @@ void PatchStrategy::registerModelVariable() {
   d_rhs_id = db->registerVariableAndContext(rhs, current, 1);
   d_matrix_id = db->registerVariableAndContext(matrix, current, 1);
 
-  d_stress_id = db->registerVariableAndContext(stress, current);
-  d_plot_id = db->registerVariableAndContext(plot, current);
+  d_stress_id = db->registerVariableAndContext(stress, current,1);
+  d_plot_id = db->registerVariableAndContext(plot, current,1);
 
   //update #2
   d_von_mises_id = db->registerVariableAndContext(von_mises_stress, current);
@@ -317,7 +317,7 @@ void PatchStrategy::registerModelVariable() {
    * 层流模型的变量
    **********************************************************************/
   // 流体自由度信息，仅在节点（Node）上存在自由度
-  d_dof_info_fluid = new solv::DOFInfo<NDIM>(true, false, false, false);
+  F_dof_info = new solv::DOFInfo<NDIM>(true, false, false, false);
 
   //  DECLARE_MATVEC_VARIABLE(dual_solution, Vector, double, d_dof_info);  // 向量变量， 解向量
   //   DECLARE_MATVEC_VARIABLE(dual_rhs, Vector, double, d_dof_info);  // 向量变量， 右端项
@@ -326,16 +326,16 @@ void PatchStrategy::registerModelVariable() {
   //   REGISTER_VARIABLE(d_dual_STRESS_rhs_id, dual_rhs, current, 1);
 
   /// 流体方程的解向量
-  DECLARE_MATVEC_VARIABLE(fluid_solution,Vector,double,d_dof_info_fluid);
+  DECLARE_MATVEC_VARIABLE(fluid_solution,Vector,double,F_dof_info);
   REGISTER_VARIABLE(F_solution_id,fluid_solution,current,1);
   /// 流体方程的Delta u向量
-  DECLARE_MATVEC_VARIABLE(fluid_delta,Vector,double,d_dof_info_fluid);
+  DECLARE_MATVEC_VARIABLE(fluid_delta,Vector,double,F_dof_info);
   REGISTER_VARIABLE(F_delta_id,fluid_delta,current,1);
   /// 流体方程的右端项
-  DECLARE_MATVEC_VARIABLE(fluid_rhs,Vector,double,d_dof_info_fluid);
+  DECLARE_MATVEC_VARIABLE(fluid_rhs,Vector,double,F_dof_info);
   REGISTER_VARIABLE(F_rhs_id,fluid_solution,current,1);
   /// 流体方程的系统矩阵
-  DECLARE_MATVEC_VARIABLE(fluid_matrix,CSRMatrix,double,d_dof_info_fluid);
+  DECLARE_MATVEC_VARIABLE(fluid_matrix,CSRMatrix,double,F_dof_info);
   REGISTER_VARIABLE(F_matrix_id,fluid_matrix,current,1);
   /// 流速场的变量声明
   DECLARE_VARIABLE(velocity_plot,Node,double,NDIM,1);
@@ -390,10 +390,14 @@ void PatchStrategy::initializeComponent(
 
     component->registerInitPatchData(d_Cell_jacobian_id);
     component->registerInitPatchData(d_Cell_volume_id);
+
+    ///注册流体数据片
+    component->registerInitPatchData(F_vel_plot_id);
+    component->registerInitPatchData(F_pre_plot_id);
     /// 将dofInfo中的数据片注册到初始化构件。
-    d_dof_info->registerToInitComponent(component);
+    M_dof_info->registerToInitComponent(component);
     //update #8 @4
-    d_dof_info_th->registerToInitComponent(component);
+    T_dof_info->registerToInitComponent(component);
   } else if (component_name == "ALLOC_F") {
     /// 内存构件，流体力学
     component->registerPatchData(F_matrix_id);
@@ -479,70 +483,22 @@ void PatchStrategy::initializePatchData(hier::Patch<NDIM>& patch,
   NULL_USE(time); /**< 初始化中没有用到time */
 
   if (initial_time) {
-    tbox::Pointer<pdat::NodeData<NDIM, double> > plot =
-        patch.getPatchData(d_plot_id);
-    tbox::Pointer<pdat::CellData<NDIM, double> > str =
-        patch.getPatchData(d_stress_id);
-
-    //update #2
-    tbox::Pointer<pdat::CellData<NDIM, double> > von_Mises =
-        patch.getPatchData(d_von_mises_id);
-
-    //update #8 @6
-    tbox::Pointer<pdat::NodeData<NDIM, double> > th_plot =
-        patch.getPatchData(th_plot_id);
-    tbox::Pointer<pdat::NodeData<NDIM, double> > th_Told =
-        patch.getPatchData(th_Told_id);
-    tbox::Pointer<pdat::NodeData<NDIM, double> > th_Tolder =
-        patch.getPatchData(th_Tolder_id);
-
-    //update #1 @5
-    tbox::Pointer<pdat::CellData<NDIM, int> > entityid_data =
-        patch.getPatchData(d_EntityIdOfCell_id);
-    tbox::Pointer<pdat::CellData<NDIM, int> > materialid_data =
-        patch.getPatchData(material_num_id);
-
-    //update #4 @5
-    tbox::Pointer<pdat::NodeData<NDIM, double> >disp_node =
-        patch.getPatchData(d_displacement_id);
-
-    //update #9
-    tbox::Pointer<pdat::NodeData<NDIM, double> >voltage_node =
-        patch.getPatchData(E_plot_id);
-    tbox::Pointer<pdat::CellData<NDIM, double> > electric_data =
-        patch.getPatchData(E_mag_id);
-    tbox::Pointer<pdat::CellData<NDIM, double> > tool_domain =
-        patch.getPatchData(d_tool_domain_id);
-    tbox::Pointer<pdat::CellData<NDIM, double> > improved_coef =
-        patch.getPatchData(d_improved_coefficient_id);
-    tbox::Pointer<pdat::CellData<NDIM, double> > plot_coef =
-        patch.getPatchData(d_output_coefficient_id);
-
-    tbox::Pointer<pdat::CellData<NDIM, int> > is_on_bnd =
-        patch.getPatchData(d_contained_domain_id);
-    DECLARE_ADJACENCY(patch,cell,face,Cell,Face);
-    DECLARE_ADJACENCY(patch,face,cell,Face,Cell);
-    DECLARE_ADJACENCY(patch,cell,cell,Cell,Cell);
+    InitVariableComponent(patch);
+    InitMaterialComponent(patch);
+    InitStressRecoveryComponent(patch);
 
 
-    tbox::Pointer<pdat::CellData<NDIM, double> > jacobian =
-        patch.getPatchData(d_Cell_jacobian_id);
-    tbox::Pointer<pdat::CellData<NDIM, double> > volume=
-        patch.getPatchData(d_Cell_volume_id);
-    JAUMIN::appu::TetGeom tetrahedron(patch);
 
 
 
     // 获取当前网格片的单元，结点数目.
     int num_nodes = patch.getNumberOfNodes(1);
-    int num_local_nodes = patch.getNumberOfNodes();
-    int num_local_cells = patch.getNumberOfCells();
-    int num_cells = patch.getNumberOfCells(1);
+
 
     /// 获取自由度分布和映射数组的指针首地址
-    int* dis_ptr = d_dof_info->getDOFDistribution(patch);
+    int* dis_ptr = M_dof_info->getDOFDistribution(patch);
     //update #8 @6
-    int* th_ptr = d_dof_info_th->getDOFDistribution(patch);
+    int* th_ptr = T_dof_info->getDOFDistribution(patch);
 
     /// 为分布和映射数组赋值
     for (int i = 0; i < num_nodes; ++i) {
@@ -551,157 +507,224 @@ void PatchStrategy::initializePatchData(hier::Patch<NDIM>& patch,
     }
 
     /// 建立映射
-    d_dof_info->buildPatchDOFMapping(patch);
+    M_dof_info->buildPatchDOFMapping(patch);
 
-    d_dof_info_th->buildPatchDOFMapping(patch);//update #8 @6
+    T_dof_info->buildPatchDOFMapping(patch);//update #8 @6
 
-    /// 初始化tool domain信息
-    for(int cc = 0; cc < num_local_cells; cc++){
-      (*volume)(0, cc) = tetrahedron.volume(cc);
-      tetrahedron.jacobian(cc, &((*jacobian)(0, cc)));
-      bool is_computed = false;
-      /// 遍历需要关注的域
-      for(int von_id = 0; von_id < d_improved_stress.size();von_id++){
-        if (HAS_ENTITY_SET(patch, d_improved_stress[von_id], CELL, 1)){
-          DECLARE_ENTITY_SET(patch, improved_stress_space,
-                             d_improved_stress[von_id], CELL, 1);
-          std::sort(improved_stress_space.getPointer(),
-                    improved_stress_space.getPointer() + improved_stress_space.size());
-          bool is_computed_cell =
-              std::binary_search(improved_stress_space.getPointer(),
-                                 improved_stress_space.getPointer()+improved_stress_space.size(),
-                                 cc);
-          bool is_neighbor_computed = false;
-          for(int c2 = 0; c2<cell_cell_ext[cc+1]-cell_cell_ext[cc]; c2++){
-            int cc2 = cell_cell_idx[cell_cell_ext[cc]+c2];
-            is_neighbor_computed
-                = std::binary_search(improved_stress_space.getPointer(),
-                                     improved_stress_space.getPointer()+improved_stress_space.size(),
-                                     cc2);
-            /// 一旦它变成true就直接退出
-            if (is_neighbor_computed == true)
-              break;
+  }
+}
+
+/**
+ * @brief PatchStretegy::InitStressRecoveryComponent
+ * @param patch
+ * 初始化应力恢复的变量
+ */
+void PatchStrategy::InitStressRecoveryComponent(hier::Patch<NDIM>& patch){
+  // 获取当前网格片的单元，结点数目.
+  int num_local_cells = patch.getNumberOfCells();
+  JAUMIN::appu::TetGeom tetrahedron(patch);
+  GET_PATCH_DATA(patch,volume,d_Cell_volume_id,Cell,double);
+  GET_PATCH_DATA(patch,jacobian,d_Cell_jacobian_id,Cell,double);
+  GET_PATCH_DATA(patch,is_on_bnd,d_contained_domain_id,Cell,double);
+  DECLARE_ADJACENCY(patch,cell,cell,Cell,Cell);
+
+  // 初始化tool domain信息
+      for(int cc = 0; cc < num_local_cells; cc++){
+        (*volume)(0, cc) = tetrahedron.volume(cc);
+        tetrahedron.jacobian(cc, &((*jacobian)(0, cc)));
+        bool is_computed = false;
+        /// 遍历需要关注的域
+        for(int von_id = 0; von_id < d_improved_stress.size();von_id++){
+          if (HAS_ENTITY_SET(patch, d_improved_stress[von_id], CELL, 1)){
+            DECLARE_ENTITY_SET(patch, improved_stress_space,
+                               d_improved_stress[von_id], CELL, 1);
+            std::sort(improved_stress_space.getPointer(),
+                      improved_stress_space.getPointer() + improved_stress_space.size());
+            bool is_computed_cell =
+                std::binary_search(improved_stress_space.getPointer(),
+                                   improved_stress_space.getPointer()+improved_stress_space.size(),
+                                   cc);
+            bool is_neighbor_computed = false;
+            for(int c2 = 0; c2<cell_cell_ext[cc+1]-cell_cell_ext[cc]; c2++){
+              int cc2 = cell_cell_idx[cell_cell_ext[cc]+c2];
+              is_neighbor_computed
+                  = std::binary_search(improved_stress_space.getPointer(),
+                                       improved_stress_space.getPointer()+improved_stress_space.size(),
+                                       cc2);
+              /// 一旦它变成true就直接退出
+              if (is_neighbor_computed == true)
+                break;
+            }
+            /// 任意一个满足就置true
+            if(is_computed_cell||is_neighbor_computed) is_computed = true;
           }
-          /// 任意一个满足就置true
-          if(is_computed_cell||is_neighbor_computed) is_computed = true;
+
         }
-
+        bool is_tool = true;
+        if(cell_cell_ext[cc+1]-cell_cell_ext[cc]<4) is_tool = false;
+        /// 可以被当作工具域中心，且需要计算
+        if(is_tool && is_computed) (*is_on_bnd)(0,cc) = 1;
+        /// 不能被当作工作域中心，但需要计算
+        if(!is_tool && is_computed) (*is_on_bnd)(0,cc) = 0;
+        /// 不需要计算
+        if(!is_computed) (*is_on_bnd)(0,cc) = -1;
       }
-      bool is_tool = true;
-      if(cell_cell_ext[cc+1]-cell_cell_ext[cc]<4) is_tool = false;
-      /// 可以被当作工具域中心，且需要计算
-      if(is_tool && is_computed) (*is_on_bnd)(0,cc) = 1;
-      /// 不能被当作工作域中心，但需要计算
-      if(!is_tool && is_computed) (*is_on_bnd)(0,cc) = 0;
-      /// 不需要计算
-      if(!is_computed) (*is_on_bnd)(0,cc) = -1;
-    }
-
-    /// 初始化普通数据片
-    for (int i = 0; i < num_local_nodes; ++i) {
-      for (int j = 0; j < NDIM; ++j) (*plot)(j, i) = 0;
-      (*th_plot)(0,i)=293.15;//update #8 @6
-      (*voltage_node)(0,i)=0;
-    }
-
-    for (int i = 0; i < num_local_cells; ++i) {
-      for (int j = 0; j < 6; ++j) (*str)(j, i) = 0.0;
-      (*von_Mises)(0,i)=0;
-      for(int j = 0; j < 6 * (NDIM+1); j ++){
-        (*improved_coef)(j,i) = 0.;
-        (*plot_coef)(j,i) = 0.;
-      }
-    }
-
-    for (int i = 0; i < num_nodes; ++i) {
-      (*th_Told)(0,i)=293.15;//update #8 @6
-      (*th_Tolder)(0,i)=293.15;//update #8 @6
-    }
-    //cout<<"initial half2"<<endl;
-    for (int iii = 0; iii < num_cells; ++iii) {
-      (*electric_data)(0,iii) = 0.0;
-    }
-    // cout<<"initial half3"<<endl;
-    //update #4 @6
-    for (int i = 0; i < num_nodes; ++i) {
-      (*disp_node)(0, i) = 0.0;
-    }
-
-    // cout<<"initial half4"<<endl;
-    /// 对EntityIdOfCell数据片初始化   update #1 @6
-
-    //int copper_id_len=sizeof(Copper_id)/sizeof(Copper_id[0]);
-    //int silicon_id_len=sizeof(Silicon_id)/sizeof(Silicon_id[0]);
-    int SiO2_id_len=sizeof(SiO2_id)/sizeof(SiO2_id[0]);
-    //int SiN_id_len=sizeof(BCB_id)/sizeof(BCB_id[0]);
-    int Copper_id_len=sizeof(Copper_id)/sizeof(Copper_id[0]);
-    int Aluminum_id_len=sizeof(Aluminum_id)/sizeof(Aluminum_id[0]);
-    int GaN_id_len=sizeof(GaN_id)/sizeof(GaN_id[0]);
-    int Al2O3_id_len=sizeof(Al2O3_id)/sizeof(Al2O3_id[0]);
-    int Alloy_id_len=sizeof(Alloy_id)/sizeof(Alloy_id[0]);
-    int Silicon_id_len=sizeof(Silicon_id)/sizeof(Silicon_id[0]);
-
-    int water_id_len = sizeof(water_id)/sizeof(water_id[0]);
 
 
-    for(int e_id=1;e_id<(ENTITY_NUM+1);e_id++)
-    {
-      if (!patch.getPatchGeometry()->hasEntitySet
-          (e_id, hier::EntityUtilities::CELL, patch.getNumberOfCells(1)))
-        continue;
-      tbox::Array<int> cells =  patch.getPatchGeometry()->getEntityIndicesInSet
-          (e_id, hier::EntityUtilities::CELL, patch.getNumberOfCells(1));
-      for(int ii=0;ii<cells.size();ii++)
-      {
-        (*entityid_data)(0,cells[ii])=e_id;
-      }
-    }
-    //cout<<"initial half2"<<endl;
-    for (int iii = 0; iii < num_cells; ++iii) {
-      (*materialid_data)(0,iii)=3;//Au
-      // for(int m_id=0;m_id<copper_id_len;m_id++)
+}
 
+/**
+ * @brief PatchStrategy::InitStressRecoveryComponent
+ * @param patch
+ * 变量初始化模块的功能
+ */
+void PatchStrategy::InitVariableComponent(hier::Patch<NDIM>& patch){
+  GET_PATCH_DATA(patch, plot, d_plot_id, Node, double);
+  GET_PATCH_DATA(patch, str, d_stress_id, Cell, double);
+  GET_PATCH_DATA(patch, von_Mises, d_von_mises_id, Cell, double);
+  GET_PATCH_DATA(patch, th_plot, th_plot_id, Node, double);
+  GET_PATCH_DATA(patch, th_Told, th_Told_id, Node, double);
+  GET_PATCH_DATA(patch, th_Tolder, th_Tolder_id, Node, double);
+  GET_PATCH_DATA(patch, disp_node, d_displacement_id, Node, double);
+  GET_PATCH_DATA(patch, voltage_node, E_plot_id, Node, double);
+  GET_PATCH_DATA(patch, electric_data, E_mag_id, Cell, double);
+  GET_PATCH_DATA(patch, improved_coef, d_improved_coefficient_id, Cell, double);
+  GET_PATCH_DATA(patch, plot_coef, d_output_coefficient_id, Cell, double);
 
-      for(int m_id=0;m_id<Aluminum_id_len;m_id++)
-        if((*entityid_data)(0,iii)==Aluminum_id[m_id])
-        {(*materialid_data)(0,iii)=6;}
-
-      for(int m_id=0;m_id<GaN_id_len;m_id++)
-        if((*entityid_data)(0,iii)==GaN_id[m_id])
-        {(*materialid_data)(0,iii)=15;}
-
-
-      for(int m_id=0;m_id<Copper_id_len;m_id++)
-        if((*entityid_data)(0,iii)==Copper_id[m_id])
-        {(*materialid_data)(0,iii)=2;}
-
-
-
-      for(int m_id=0;m_id<Al2O3_id_len;m_id++)
-        if((*entityid_data)(0,iii)==Al2O3_id[m_id])
-        {(*materialid_data)(0,iii)=16;}
-
-      for(int m_id=0;m_id<Alloy_id_len;m_id++)
-        if((*entityid_data)(0,iii)==Alloy_id[m_id])
-        {(*materialid_data)(0,iii)=2;}
-      for(int m_id=0;m_id<Silicon_id_len;m_id++)
-        if((*entityid_data)(0,iii)==Silicon_id[m_id])
-        {(*materialid_data)(0,iii)=1;}
-      for(int m_id=0;m_id<SiO2_id_len;m_id++)
-        if((*entityid_data)(0,iii)==SiO2_id[m_id])
-        {(*materialid_data)(0,iii)=4;}
-
-      for(int m_id=0;m_id<water_id_len;m_id++)
-        if((*entityid_data)(0,iii)==water_id[m_id])
-        {(*materialid_data)(0,iii)=101;}
-
-
-
-      // for(int m_id=0;m_id<SiN_id_len;m_id++)
-      //  if((*entityid_data)(0,iii)==BCB_id[m_id])
-      //   {(*materialid_data)(0,iii)=9;break;}
+  GET_PATCH_DATA(patch, velocity_node, F_vel_plot_id, Node, double);
+  GET_PATCH_DATA(patch, pressure_node, F_pre_plot_id, Node, double);
+  int num_cells = patch.getNumberOfCells(1);
+  int num_nodes = patch.getNumberOfNodes(1);
+  for (int nn = 0; nn < num_nodes; ++nn){
+    for (int j = 0; j < NDIM; ++j) (*plot)(j, nn) = 0;
+    (*th_plot)(0,nn)=293.15;/// 温度场绘图
+    (*voltage_node)(0,nn)=0;/// 电压场绘图
+    (*th_Told)(0,nn)=293.15;/// 存储的温度场
+    (*th_Tolder)(0,nn)=293.15;/// 前一步的温度场
+    (*disp_node)(0, nn) = 0.0;/// 位移场
+    for (int j = 0; j < NDIM; ++j) (*velocity_node)(j, nn) = 0;
+    (*pressure_node)(0, nn) = 0;
+  }
+  for(int cc = 0; cc < num_cells; ++cc){
+    (*electric_data)(0,cc) = 0.0; /// 电场
+    for (int j = 0; j < 6; ++j) (*str)(j, cc) = 0.0;
+    (*von_Mises)(0,cc)=0;
+    for(int j = 0; j < 6 * (NDIM+1); j ++){
+      (*improved_coef)(j,cc) = 0.;
+      (*plot_coef)(j,cc) = 0.;
     }
   }
+
+
+}
+/**
+ * @brief PatchStrategy::InitMaterialComponent
+ * @param patch
+ * 材料初始化模块的功能
+ */
+void PatchStrategy::InitMaterialComponent(hier::Patch<NDIM>& patch){
+  GET_PATCH_DATA(patch, entityid_data, d_EntityIdOfCell_id, Cell, int);
+  GET_PATCH_DATA(patch, materialid_data, material_num_id, Cell, int);
+
+  int num_cells = patch.getNumberOfCells(1);
+
+
+
+
+  int SiO2_id_len=sizeof(SiO2_id)/sizeof(SiO2_id[0]);
+  int Copper_id_len=sizeof(Copper_id)/sizeof(Copper_id[0]);
+  int Aluminum_id_len=sizeof(Aluminum_id)/sizeof(Aluminum_id[0]);
+  int GaN_id_len=sizeof(GaN_id)/sizeof(GaN_id[0]);
+  int Al2O3_id_len=sizeof(Al2O3_id)/sizeof(Al2O3_id[0]);
+  int Alloy_id_len=sizeof(Alloy_id)/sizeof(Alloy_id[0]);
+  int Silicon_id_len=sizeof(Silicon_id)/sizeof(Silicon_id[0]);
+  int Water_id_len = sizeof(Water_id)/sizeof(Water_id[0]);
+
+  for(int entity_id = 1; entity_id < (ENTITY_NUM+1); entity_id++){
+    if (HAS_ENTITY_SET(patch, entity_id, CELL, 1)){
+      DECLARE_ENTITY_SET(patch, cells_in_entity,entity_id, CELL, 1);
+      for(int ele = 0; ele < cells_in_entity.getSize(); ele++){
+        (*entityid_data)(0,cells_in_entity[ele]) = entity_id;
+      }
+    }
+  }
+  for(int ele = 0; ele < num_cells; ele++){
+    /// 默认Gold
+    (*materialid_data)(0,ele)=3;
+    for(int m_id=0;m_id<Aluminum_id_len;m_id++)
+      if((*entityid_data)(0,ele)==Aluminum_id[m_id])
+        (*materialid_data)(0,ele)=6;
+
+    for(int m_id=0;m_id<GaN_id_len;m_id++)
+      if((*entityid_data)(0,ele)==GaN_id[m_id])
+        (*materialid_data)(0,ele)=15;
+
+    for(int m_id=0;m_id<Copper_id_len;m_id++)
+      if((*entityid_data)(0,ele)==Copper_id[m_id])
+        (*materialid_data)(0,ele)=2;
+
+    for(int m_id=0;m_id<Al2O3_id_len;m_id++)
+      if((*entityid_data)(0,ele)==Al2O3_id[m_id])
+        (*materialid_data)(0,ele)=16;
+
+    for(int m_id=0;m_id<Alloy_id_len;m_id++)
+      if((*entityid_data)(0,ele)==Alloy_id[m_id])
+        (*materialid_data)(0,ele)=2;
+
+    for(int m_id=0;m_id<Silicon_id_len;m_id++)
+      if((*entityid_data)(0,ele)==Silicon_id[m_id])
+        (*materialid_data)(0,ele)=1;
+
+    for(int m_id=0;m_id<SiO2_id_len;m_id++)
+      if((*entityid_data)(0,ele)==SiO2_id[m_id])
+        (*materialid_data)(0,ele)=4;
+
+    for(int m_id=0;m_id<Water_id_len;m_id++)
+      if((*entityid_data)(0,ele)==Water_id[m_id])
+        (*materialid_data)(0,ele)=101;
+
+  }
+
+}
+
+/**
+ * @brief PatchStrategy::InitDOFsComponent
+ * @param patch
+ * DOF初始化模块的功能
+ */
+void PatchStrategy::InitDOFsComponent(hier::Patch<NDIM>& patch){
+  GET_PATCH_DATA(patch, materialid_data, material_num_id, Cell, int);
+  DECLARE_ADJACENCY(patch,cell,node,Cell,Node);
+  int num_nodes = patch.getNumberOfNodes(1);
+  int num_cells = patch.getNumberOfCells(1);
+  int* M_dis_ptr = M_dof_info->getDOFDistribution(patch);
+  int* T_dis_ptr = T_dof_info->getDOFDistribution(patch);
+  int* F_dis_ptr = F_dof_info->getDOFDistribution(patch);
+  for(int nn = 0; nn < num_nodes; nn++){
+    /// 首先将其自由度全部设置为0
+    M_dis_ptr[nn] = 0;
+    T_dis_ptr[nn] = 1;
+    F_dis_ptr[nn] = 0;
+  }
+  for(int cc = 0; cc < num_cells; cc++){
+    int material_mark = (*materialid_data)(0,cc);
+    /// 流体的序号都安排在100以上
+    for(int loc_nn = 0; loc_nn < 4; loc_nn ++){
+      int glo_nn = cell_node_idx[cell_node_ext[cc]+loc_nn];
+      if(material_mark > 100){
+        F_dis_ptr[glo_nn] = 1;
+      }
+      else{
+        M_dis_ptr[glo_nn] = 1;
+      }
+    }
+  }
+  /// 建立映射
+  M_dof_info->buildPatchDOFMapping(patch);
+  T_dof_info->buildPatchDOFMapping(patch);
+  F_dof_info->buildPatchDOFMapping(patch);
+
+
 }
 
 /*************************************************************************
@@ -711,8 +734,8 @@ void PatchStrategy::putToDatabase(tbox::Pointer<tbox::Database> db) {
 #ifdef DEBUG_CHECK_ASSERTIONS
   TBOX_ASSERT(!db.isNull());
 #endif
-  d_dof_info->putToDatabase(db);
-  d_dof_info_th->putToDatabase(db);//update #8 @7
+  M_dof_info->putToDatabase(db);
+  T_dof_info->putToDatabase(db);//update #8 @7
 }
 
 /*************************************************************************
@@ -837,7 +860,7 @@ void PatchStrategy::applyConstraint(hier::Patch<NDIM>& patch,
   tbox::Pointer<pdat::VectorData<NDIM, double> > vec_data =
       patch.getPatchData(d_rhs_id);
 
-  int* dof_map = d_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  int* dof_map = M_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
 
   int* row_start = mat_data->getRowStartPointer();
   int* col_idx = mat_data->getColumnIndicesPointer();
@@ -1038,7 +1061,7 @@ void PatchStrategy::computeStress(hier::Patch<NDIM>& patch, const double time,
   tbox::Pointer<pdat::CellData<NDIM, int> > materialid_data =
       patch.getPatchData(material_num_id);
 
-  int* dof_map = d_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  int* dof_map = M_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
 
   /// 获取单元周围结点的索引关系.
   tbox::Array<int> can_extent, can_indices;
@@ -2160,7 +2183,7 @@ void PatchStrategy::buildRHSOnPatch(hier::Patch<NDIM>& patch, const double time,
   /// 取出本地Patch的结点坐标数组.
   tbox::Pointer<pdat::NodeData<NDIM, double> > node_coord =
       patch_geo->getNodeCoordinates();
-  int* dof_map = d_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  int* dof_map = M_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
   tbox::Pointer<pdat::VectorData<NDIM, double> > vec_data =
       patch.getPatchData(d_rhs_id);
 
@@ -2311,7 +2334,7 @@ void PatchStrategy::buildMatrixOnPatch(hier::Patch<NDIM>& patch,
 
   /// 取出Patch的单元数目.
   int num_cells = patch.getNumberOfCells(1);
-  int* dof_map = d_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  int* dof_map = M_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
   tbox::Pointer<pdat::CSRMatrixData<NDIM, double> > mat_data =
       patch.getPatchData(d_matrix_id);
 
@@ -2522,7 +2545,7 @@ void PatchStrategy::applyTh_Constraint(hier::Patch<NDIM>& patch,
   int num_faces = patch.getNumberOfEntities(hier::EntityUtilities::FACE, 1);
 
   /// 自由度信息中的映射信息。
-  int* dof_map = d_dof_info_th->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  int* dof_map = T_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
   /// 取出矩阵向量的核心数据结构的指针
 
   double* vec_val = vec_data->getPointer();
@@ -2679,7 +2702,7 @@ void PatchStrategy::buildTh_RHSOnPatch(hier::Patch<NDIM>& patch,
   int num_cells = patch.getNumberOfCells(1);
 
   /// 自由度映射信息
-  int* dof_map = d_dof_info_th->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  int* dof_map = T_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
 
   //update #1 @8
   tbox::Pointer<pdat::CellData<NDIM, int> > entityid_data =
@@ -2816,7 +2839,7 @@ void PatchStrategy::buildTh_MatrixOnPatch(hier::Patch<NDIM>& patch,
   int num_cells = patch.getNumberOfCells(1);
 
   /// 取出自由度映射信息
-  int* dof_map = d_dof_info_th->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  int* dof_map = T_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
   /// 遍历单元
   for (int i = 0; i < num_cells; ++i) {
     int cell=i;
@@ -2878,7 +2901,7 @@ void PatchStrategy::Thermal_PostProcesing(hier::Patch<NDIM>& patch, const double
       patch.getPatchData(th_Told_id);
   tbox::Pointer<pdat::NodeData<NDIM, double> > older_Tdata =
       patch.getPatchData(th_Tolder_id);
-  int* dof_map = d_dof_info_th->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  int* dof_map = T_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
   double* vec_pointer = vec_data->getPointer(0);
   int local_num_nodes = patch.getNumberOfNodes();
   for(int i=0;i<local_num_nodes;i++)
@@ -2952,7 +2975,7 @@ void PatchStrategy::buildE_RHSOnPatch(hier::Patch<NDIM>& patch, const double tim
   int num_cells = patch.getNumberOfCells(1);
 
   /// 自由度映射信息
-  int* dof_map = d_dof_info_th->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  int* dof_map = T_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
 
   //update #1 @8
   tbox::Pointer<pdat::CellData<NDIM, int> > entityid_data =
@@ -3024,7 +3047,7 @@ void PatchStrategy::applyE_Constraint(hier::Patch<NDIM>& patch, const double tim
   int num_faces = patch.getNumberOfEntities(hier::EntityUtilities::FACE, 1);
 
   /// 自由度信息中的映射信息。
-  int* dof_map = d_dof_info_th->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  int* dof_map = T_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
   /// 取出矩阵向量的核心数据结构的指针
   int* row_start = mat_data->getRowStartPointer();
   int* col_idx = mat_data->getColumnIndicesPointer();
@@ -3233,7 +3256,7 @@ void PatchStrategy::buildE_MatrixOnPatch(hier::Patch<NDIM>& patch, const double 
   int num_cells = patch.getNumberOfCells(1);
 
   /// 取出自由度映射信息
-  int* dof_map = d_dof_info_th->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  int* dof_map = T_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
   /// 遍历单元
   for (int i = 0; i < num_cells; ++i) {
     int cell=i;
@@ -3299,7 +3322,7 @@ void PatchStrategy::Electric_PostProcesing(hier::Patch<NDIM>& patch, const doubl
   tbox::Pointer<pdat::NodeData<NDIM, double> > plot_data =
       patch.getPatchData(E_plot_id);
 
-  int* dof_map = d_dof_info_th->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  int* dof_map = T_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
   double* vec_pointer = vec_data->getPointer(0);
 
   /// 获取单元周围结点的索引关系.
@@ -3506,6 +3529,34 @@ void PatchStrategy::getFromInput(tbox::Pointer<tbox::Database> db) {
     TBOX_ERROR(d_object_name << ": "
                << " No key `time_domain_solving' found in data." << endl);
   }
+
+
+
+  if (db->getDatabase("Domain")->keyExists("fluid_domain")) {
+    F_domain_solution = db->getDatabase("Domain")
+        ->getIntegerArray("fluid_domain");
+  } else {
+    TBOX_ERROR(d_object_name << ": "
+               << " No key `fluid_domain' found in data." << endl);
+  }
+
+  if (db->getDatabase("Domain")->keyExists("solid_domain")) {
+    M_domain_solution = db->getDatabase("Domain")
+        ->getIntegerArray("solid_domain");
+  } else {
+    TBOX_ERROR(d_object_name << ": "
+               << " No key `solid_domain' found in data." << endl);
+  }
+
+  if (db->keyExists("viscosity")) {
+    viscosity = db->getDouble("viscosity");
+  } else {
+    TBOX_ERROR(d_object_name << ": "
+               << " No key `viscosity' found in data." << endl);
+  }
+
+
+
 }
 
 /*************************************************************************
@@ -3517,7 +3568,7 @@ void PatchStrategy::getFromRestart(tbox::Pointer<tbox::Database> db) {
       tbox::RestartManager::getManager()->getRootDatabase();
 
   tbox::Pointer<tbox::Database> sub_db = root_db->getDatabase(d_object_name);
-  d_dof_info->getFromDatabase(sub_db);
+  M_dof_info->getFromDatabase(sub_db);
 }
 void PatchStrategy::ThermalPostprocess(hier::Patch<NDIM> &patch, const double time,
                                        const double dt,

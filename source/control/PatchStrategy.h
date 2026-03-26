@@ -334,6 +334,23 @@ public:
    */
   int getTh_SolutionID() { return th_solution_id; }
 
+
+  /*
+   * 初始化函数的模块化
+   *
+   *
+   *
+   *
+   * */
+
+  /// 应力恢复模块的功能
+  void InitStressRecoveryComponent(hier::Patch<NDIM>& patch);
+  /// 变量初始化模块的功能
+  void InitVariableComponent(hier::Patch<NDIM>& patch);
+  /// DOF初始化模块的功能
+  void InitDOFsComponent(hier::Patch<NDIM>& patch);
+  /// 材料初始化模块的功能
+  void InitMaterialComponent(hier::Patch<NDIM>& patch);
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   ///////////////////////////////////////////////update #9///////////////////////////////////////////////////
@@ -455,7 +472,7 @@ public:
    *
    * @return 指针，指向自由度信息
    */
-  tbox::Pointer<solv::DOFInfo<NDIM> > getDOFInfo() { return d_dof_info; }
+  tbox::Pointer<solv::DOFInfo<NDIM> > getDOFInfo() { return M_dof_info; }
 
 
   /// 支持CGAL的数据结构
@@ -671,12 +688,12 @@ private:
 
   /*!@brief 对象名.  */
   string d_object_name;
-  tbox::Pointer<solv::DOFInfo<NDIM> > d_dof_info;
+  tbox::Pointer<solv::DOFInfo<NDIM> > M_dof_info;
 
   //update #8 @1
-  tbox::Pointer<solv::DOFInfo<NDIM> > d_dof_info_th;
+  tbox::Pointer<solv::DOFInfo<NDIM> > T_dof_info;
   /// 流体的自由度信息
-  tbox::Pointer<solv::DOFInfo<NDIM> > d_dof_info_fluid;
+  tbox::Pointer<solv::DOFInfo<NDIM> > F_dof_info;
   tbox::Array<string> d_element_type; /**< 单元类型 */
   tbox::Array<int> d_element_marks;   /**< 单元的标示 */
 
@@ -699,6 +716,12 @@ private:
   string d_file_name_query;
 
   bool d_is_time_domain_solve;
+
+  /// 固体力学求解domain
+  tbox::Array<int> M_domain_solution;
+  /// 流体力学求解domain
+  tbox::Array<int> F_domain_solution;
+  double viscosity; ///粘度
 
   /// 输入数据库指针.
   tbox::Pointer<tbox::Database> d_input_db;

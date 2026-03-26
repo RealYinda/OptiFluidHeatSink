@@ -6,17 +6,17 @@
 
 Main{
     // 日志文件名称.
-    log_file_name    = "Thermal_solver.log"
+    log_file_name    = "OptiFluidHeatSink.log"
     log_all_nodes    = FALSE
 
     // 可视化数据场的输出参数.
     javis_dump_interval         = 1                 // 输出时间步的间隔. 0表示关闭.
-    javis_dump_dirname          = "javis_Thermal_solver"      // 存储数据场的目录名.
+    javis_dump_dirname          = "javis_OptiFluidHeatSink"      // 存储数据场的目录名.
     javis_number_procs_per_file = 1                 // 多少个进程共享一个输出文件.
 
     // 重启动控制参数.
     restart_dump_interval       = 0                 // 重启动时间步的间隔. 0表示关闭.
-    restart_dump_dirname        = "restart_Thermal_solver"    // 存储重启动数据场的目录名.
+    restart_dump_dirname        = "restart_OptiFluidHeatSink"    // 存储重启动数据场的目录名.
 
 }
 
@@ -87,6 +87,11 @@ FEM {
     improved_stress = 0
     query_file_name = "../input/TempQuery.dat"
     time_domain_solving = FALSE
+    viscosity = 1.01e-3
+    Domain{
+        fluid_domain = 1
+        solid_domain = 2
+    }
 }
 
 GridGeometry {

@@ -486,31 +486,7 @@ void PatchStrategy::initializePatchData(hier::Patch<NDIM>& patch,
     InitVariableComponent(patch);
     InitMaterialComponent(patch);
     InitStressRecoveryComponent(patch);
-
-
-
-
-
-    // 获取当前网格片的单元，结点数目.
-    int num_nodes = patch.getNumberOfNodes(1);
-
-
-    /// 获取自由度分布和映射数组的指针首地址
-    int* dis_ptr = M_dof_info->getDOFDistribution(patch);
-    //update #8 @6
-    int* th_ptr = T_dof_info->getDOFDistribution(patch);
-
-    /// 为分布和映射数组赋值
-    for (int i = 0; i < num_nodes; ++i) {
-      dis_ptr[i] = NDIM;
-      th_ptr[i]=1; //update #8 @6
-    }
-
-    /// 建立映射
-    M_dof_info->buildPatchDOFMapping(patch);
-
-    T_dof_info->buildPatchDOFMapping(patch);//update #8 @6
-
+    InitDOFsComponent(patch);
   }
 }
 
@@ -712,7 +688,7 @@ void PatchStrategy::InitDOFsComponent(hier::Patch<NDIM>& patch){
     for(int loc_nn = 0; loc_nn < 4; loc_nn ++){
       int glo_nn = cell_node_idx[cell_node_ext[cc]+loc_nn];
       if(material_mark > 100){
-        F_dis_ptr[glo_nn] = 1;
+        F_dis_ptr[glo_nn] = 4;
       }
       else{
         M_dis_ptr[glo_nn] = 1;
@@ -3300,6 +3276,86 @@ void PatchStrategy::buildE_MatrixOnPatch(hier::Patch<NDIM>& patch, const double 
   }
   // cout<<"matrix ok"<<endl;
 }
+void PatchStrategy::buildInitFluidMatrixOnPatch(hier::Patch<NDIM>& patch, const double time,
+                                                const double dt, const string& component_name){
+  /// 取出本地PatchGeometry与PatchTopology
+  tbox::Pointer<hier::PatchGeometry<NDIM> > patch_geo =
+      patch.getPatchGeometry();
+  tbox::Pointer<hier::PatchTopology<NDIM> > patch_top =
+      patch.getPatchTopology();
+
+  /// 取出本地Patch的结点坐标数组
+  tbox::Pointer<pdat::NodeData<NDIM, double> > node_coord =
+      patch_geo->getNodeCoordinates();
+
+  /// 使用宏获取实体与材料的单元数据片
+  GET_PATCH_DATA(patch, entityid_data, d_EntityIdOfCell_id, Cell, int);
+  GET_PATCH_DATA(patch, materialid_data, material_num_id, Cell, int);
+  /// 4. 获取前一步的温度分布（用于计算随温度变化的本构参数）
+  GET_PATCH_DATA(patch, T_data, th_Told_id, Node, double);
+  /// 获取网格片流体(Stokes)矩阵对象
+  tbox::Pointer<pdat::CSRMatrixData<NDIM, double> > mat_data =
+      patch.getPatchData(F_matrix_id);
+  DECLARE_ADJACENCY(patch, cell, node, Cell, Node);
+  /// 取出流体特有的自由度映射信息 (包含速度 NDIM 和压力 1)
+  int* dof_map = F_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  int num_cells = patch.getNumberOfCells(1);
+  /// 遍历单元进行 Stokes 刚度矩阵组装
+    for (int i = 0; i < num_cells; ++i) {
+      /// 只考虑流体域
+      if((*materialid_data)(0,i)>100) continue;
+      int cell = i;
+      int n_vertex = cell_node_ext[i + 1] - cell_node_ext[i];
+
+
+      int n_dof = (NDIM + 1) * n_vertex;
+
+      tbox::Array<hier::DoubleVector<NDIM> > vertex(n_vertex);
+      tbox::Array<int> mapping(n_dof);
+      tbox::Array<double> T_val(n_vertex);
+
+      /// 取出单元结点坐标，提取温度，并填写交替排列的映射值
+      for (int i1 = 0, j = cell_node_ext[i]; i1 < n_vertex; ++i1, ++j) {
+        int node_idx = cell_node_idx[j];
+        T_val[i1] = (*T_data)(0, node_idx);
+
+        /// 提取当前节点的基础映射地址，并顺次偏移赋给 u, v, w, p
+        for (int k = 0; k < NDIM + 1; ++k) {
+          mapping[i1 * (NDIM + 1) + k] = dof_map[node_idx] + k;
+        }
+        for (int k = 0; k < NDIM; ++k) {
+          vertex[i1][k] = (*node_coord)(k, node_idx);
+        }
+      }
+      /// 初始化单元局部矩阵
+      tbox::Pointer<tbox::Matrix<double> > ele_mat = new tbox::Matrix<double>();
+      ele_mat->resize(n_dof, n_dof);
+      for (int r = 0; r < n_dof; ++r) {
+        for (int c = 0; c < n_dof; ++c) {
+          (*ele_mat)(r, c) = 0.0;
+        }
+      }
+      /// 取出单元对象
+      tbox::Pointer<BaseElement<NDIM> > ele =
+          d_element_manager->getElement(d_element_type[0]);
+
+      /// 调用计算 Stokes 单元刚度矩阵的底层函数
+      /// 该函数内部应包含：粘性耗散矩阵 K_mu、压力梯度矩阵 G、散度约束矩阵 D，以及稳定化项 K_PSPG
+      /// 施工中
+      //          ele->buildInitFluid_ElementMatrix(vertex, dt, time, ele_mat, (*materialid_data)(0, cell), T_val);
+      /// 累加单元矩阵到全局系统
+      for (int r = 0; r < n_dof; ++r) {
+        int row = mapping[r];
+        for (int c = 0; c < n_dof; ++c) {
+          int col = mapping[c];
+          mat_data->addMatrixValue(row, col, (*ele_mat)(r, c));
+        }
+      }
+    }
+
+}
+
+
 
 void PatchStrategy::Electric_PostProcesing(hier::Patch<NDIM>& patch, const double time,
                                            const double dt, const string& component_name)

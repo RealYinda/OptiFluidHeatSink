@@ -296,6 +296,34 @@ public:
    */
   void applyTh_Constraint(hier::Patch<NDIM>& patch, const double time,
                           const double dt, const string& component_name);
+  /**
+   * @brief 流体方程矩阵组装（斯托克斯流）
+   * @param patch
+   * @param time
+   * @param dt
+   * @param component_name
+   */
+  void buildInitFluidMatrixOnPatch(hier::Patch<NDIM>& patch, const double time,
+                             const double dt, const string& component_name);
+  /**
+   * @brief 流体力学右端项组装（斯托克斯流）
+   * @param patch
+   * @param time
+   * @param dt
+   * @param component_name
+   */
+  void buildInitFluidRHSOnPatch(hier::Patch<NDIM>& patch, const double time,
+                             const double dt, const string& component_name);
+
+  /**
+   * @brief 流体力学边界条件施加（斯托克斯流）
+   * @param patch
+   * @param time
+   * @param dt
+   * @param component_name
+   */
+  void applyInitFluidConstraint(hier::Patch<NDIM>& patch, const double time,
+                                const double dt, const string& component_name);
 
   /*!
    * @brief 完成热计算后处理

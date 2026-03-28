@@ -341,9 +341,13 @@ void PatchStrategy::registerModelVariable() {
   DECLARE_VARIABLE(velocity_plot,Node,double,NDIM,1);
   /// 压力场的变量声明
   DECLARE_VARIABLE(pressure_plot,Node,double,1,1);
+  /// 狄利克雷边界的声明
+  DECLARE_VARIABLE(fluid_boundary,Node,double,1,1);
 
   REGISTER_VARIABLE(F_vel_plot_id,velocity_plot,current,1);
   REGISTER_VARIABLE(F_pre_plot_id,pressure_plot,current,1);
+  REGISTER_VARIABLE(boundary_fluid_di_id,fluid_boundary,current,1);
+
 
 
 
@@ -394,6 +398,7 @@ void PatchStrategy::initializeComponent(
     ///注册流体数据片
     component->registerInitPatchData(F_vel_plot_id);
     component->registerInitPatchData(F_pre_plot_id);
+    component->registerInitPatchData(boundary_fluid_di_id);
     /// 将dofInfo中的数据片注册到初始化构件。
     M_dof_info->registerToInitComponent(component);
     //update #8 @4
@@ -430,7 +435,11 @@ void PatchStrategy::initializeComponent(
     component->registerCommunicationPatchData(d_solution_id, d_solution_id);
     component->registerCommunicationPatchData(th_Told_id, th_Told_id);
     component->registerCommunicationPatchData(th_Tolder_id, th_Tolder_id);
-  } else if (component_name == "DISPLACEMENT") {  // 数值构件, 更新位移.
+  } else if (component_name == "F_CONS_INIT") {  // 数值构件，加载约束.
+  } else if (component_name == "F_MAT_INIT") {   // 数值构件，计算矩阵。
+    component->registerCommunicationPatchData(th_Told_id, th_Told_id);
+  } else if (component_name == "F_RHS") {   // 数值构件，计算右端项.
+  }else if (component_name == "DISPLACEMENT") {  // 数值构件, 更新位移.
     component->registerCommunicationPatchData(d_solution_id, d_solution_id);
   } else if (component_name == "STRESS") {        // 数值构件, 计算应力.
     component->registerCommunicationPatchData(d_solution_id, d_solution_id);
@@ -462,6 +471,9 @@ void PatchStrategy::initializeComponent(
     component->registerCommunicationPatchData(th_Told_id, th_Told_id);
   } else if (component_name == "E_PLOT") {// 数值构件，计算电求解右端项.Electric_PostProcesing
     component->registerCommunicationPatchData(E_solution_id, E_solution_id);
+  }else if (component_name == "F_UPDATE") {// 数值构件，计算电求解右端项.Electric_PostProcesing
+    component->registerCommunicationPatchData(F_solution_id, F_solution_id);
+    component->registerCommunicationPatchData(F_delta_id, F_delta_id);
   }else if (component_name == "Max_T")        {// 规约构件，计算最大温度
   }else if (component_name == "Stress_T")        {// 规约构件，计算最大yingli
   }	else {
@@ -485,6 +497,7 @@ void PatchStrategy::initializePatchData(hier::Patch<NDIM>& patch,
   if (initial_time) {
     InitVariableComponent(patch);
     InitMaterialComponent(patch);
+    InitBoundaryComponent(patch);
     InitStressRecoveryComponent(patch);
     InitDOFsComponent(patch);
   }
@@ -703,6 +716,56 @@ void PatchStrategy::InitDOFsComponent(hier::Patch<NDIM>& patch){
 
 }
 
+/**
+ * @brief PatchStrategy::InitBoundaryComponent
+ * @param patch
+ * 边界初始化模块的功能
+ */
+void PatchStrategy::InitBoundaryComponent(hier::Patch<NDIM>& patch){
+  int num_faces = patch.getNumberOfFaces(1);
+  DECLARE_ADJACENCY(patch,face,node,Face,Node);
+  GET_PATCH_DATA(patch, fluid_boundary, boundary_fluid_di_id, Node, int);
+
+  /// 首先初始化全为0
+  for(int ff = 0; ff <num_faces; ff++){
+    for(int nn = 0; nn < NDIM; nn ++){
+      int glo_nn = face_node_idx[face_node_ext[ff]+nn];
+      (*fluid_boundary)(0,glo_nn) = 0;
+    }
+  }
+  for(int face_idx = 0; face_idx < inlet_velocity_mark_id.getSize(); face_idx ++){
+    if (HAS_ENTITY_SET(patch, inlet_velocity_mark_id[face_idx], FACE, 1)){
+      DECLARE_ENTITY_SET(patch, all_face_velocity,
+                         inlet_velocity_mark_id[face_idx], FACE, 1);
+      for(int ff = 0; ff < all_face_velocity.getSize();ff ++){
+        int this_face = all_face_velocity[ff];
+        for(int nn = 0; nn < NDIM; nn ++){
+          int glo_nn = face_node_idx[face_node_ext[this_face]+nn];
+          /// 流速边界
+          (*fluid_boundary)(0,glo_nn) = 1;
+        }
+      }
+    }
+  }
+
+
+  for(int face_idx = 0; face_idx < wall_velocity_mark_id.getSize(); face_idx ++){
+    if (HAS_ENTITY_SET(patch, wall_velocity_mark_id[face_idx], FACE, 1)){
+      DECLARE_ENTITY_SET(patch, all_face_velocity,
+                         wall_velocity_mark_id[face_idx], FACE, 1);
+      for(int ff = 0; ff < all_face_velocity.getSize();ff ++){
+        int this_face = all_face_velocity[ff];
+        for(int nn = 0; nn < NDIM; nn ++){
+          int glo_nn = face_node_idx[face_node_ext[this_face]+nn];
+          /// 壁边界
+          (*fluid_boundary)(0,glo_nn) = 2;
+        }
+      }
+    }
+  }
+
+}
+
 /*************************************************************************
  *  输出数据成员到重启动数据库.
  ************************************************************************/
@@ -712,6 +775,7 @@ void PatchStrategy::putToDatabase(tbox::Pointer<tbox::Database> db) {
 #endif
   M_dof_info->putToDatabase(db);
   T_dof_info->putToDatabase(db);//update #8 @7
+  F_dof_info->putToDatabase(db);
 }
 
 /*************************************************************************
@@ -924,6 +988,12 @@ void PatchStrategy::computeOnPatch(hier::Patch<NDIM>& patch, const double time,
     applyE_Constraint(patch, time, dt, component_name);
   } else if (component_name == "E_PLOT") {
     Electric_PostProcesing(patch, time, dt, component_name);
+  } else if (component_name == "F_MAT_INIT") {
+    buildInitFluidMatrixOnPatch(patch, time, dt, component_name);
+  } else if (component_name == "F_RHS") {
+    buildInitFluidRHSOnPatch(patch, time, dt, component_name);
+  } else if (component_name == "F_CONS_INIT") {
+    applyInitFluidConstraint(patch, time, dt, component_name);
   } else {
     TBOX_ERROR(" PatchStrategy :: component name is error! ");
   }
@@ -3303,7 +3373,7 @@ void PatchStrategy::buildInitFluidMatrixOnPatch(hier::Patch<NDIM>& patch, const 
   /// 遍历单元进行 Stokes 刚度矩阵组装
     for (int i = 0; i < num_cells; ++i) {
       /// 只考虑流体域
-      if((*materialid_data)(0,i)>100) continue;
+      if((*materialid_data)(0,i)<100) continue;
       int cell = i;
       int n_vertex = cell_node_ext[i + 1] - cell_node_ext[i];
 
@@ -3341,8 +3411,7 @@ void PatchStrategy::buildInitFluidMatrixOnPatch(hier::Patch<NDIM>& patch, const 
 
       /// 调用计算 Stokes 单元刚度矩阵的底层函数
       /// 该函数内部应包含：粘性耗散矩阵 K_mu、压力梯度矩阵 G、散度约束矩阵 D，以及稳定化项 K_PSPG
-      /// 施工中
-      //          ele->buildInitFluid_ElementMatrix(vertex, dt, time, ele_mat, (*materialid_data)(0, cell), T_val);
+      ele->buildInitFluidElementMatrix(vertex, dt, time, ele_mat, (*materialid_data)(0, cell), T_val,(&viscosity));
       /// 累加单元矩阵到全局系统
       for (int r = 0; r < n_dof; ++r) {
         int row = mapping[r];
@@ -3355,7 +3424,381 @@ void PatchStrategy::buildInitFluidMatrixOnPatch(hier::Patch<NDIM>& patch, const 
 
 }
 
+/// 流体力学边界条件施加（斯托克斯流）
+void PatchStrategy::applyInitFluidConstraint(hier::Patch<NDIM>& patch, const double time,
+                                             const double dt, const string& component_name){
 
+  /// 获取网格片流体矩阵对象与 RHS 向量对象
+  tbox::Pointer<pdat::CSRMatrixData<NDIM, double> > mat_data =
+      patch.getPatchData(F_matrix_id);
+  tbox::Pointer<pdat::VectorData<NDIM, double> > vec_data =
+      patch.getPatchData(F_rhs_id);
+  GET_PATCH_DATA(patch, fluid_boundary, boundary_fluid_di_id, Node, int);
+  /// 自由度信息中的映射信息 (NDIM+1个自由度)
+  int* dof_map = F_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
+
+  /// 取出矩阵向量的核心数据结构的指针
+  int* row_start = mat_data->getRowStartPointer();
+  int* col_idx   = mat_data->getColumnIndicesPointer();
+  double* mat_val = mat_data->getValuePointer();
+  double* vec_val = vec_data->getPointer();
+  mat_data->assemble();
+  int num_nodes = patch.getNumberOfNodes(1);
+  for (int node_id = 0; node_id < num_nodes; ++node_id){
+    int bc_type = (*fluid_boundary)(0, node_id);
+
+    /// 如果是边界节点 (bc_type > 0)
+    if (bc_type > 0) {
+      double prescribed_vel[3] = {0.0, 0.0, 0.0};
+      if (bc_type == 1) {
+        // 入口 (Inlet) - 假定 X 方向 0.5 m/s
+        prescribed_vel[0] = 0.5;
+      } else if (bc_type == 2) {
+        // 壁面 (Wall) - 无滑移，保持全 0
+      } else {
+        // 其他类型的边界（例如自然边界/出口），不约束速度，直接跳过
+        continue;
+      }
+      /// 施加约束到速度分量 (避开代表压力的最后一个 DOF)
+      for (int d = 0; d < NDIM; ++d) {
+        int index = dof_map[node_id] + d;
+        vec_val[index] = prescribed_vel[d];
+
+        /// 对角化 1 法处理约束，并保持矩阵对称
+        for (int j = row_start[index]; j < row_start[index + 1]; ++j) {
+          if (col_idx[j] == index) {
+            mat_val[j] = 1.0;
+          } else {
+            mat_val[j] = 0.0;
+            vec_val[col_idx[j]] -= (*mat_data)(col_idx[j], index) * vec_val[index];
+            (*mat_data)(col_idx[j], index) = 0.0;
+          }
+        }
+      } // end NDIM 循环
+    }
+  }
+
+
+
+
+
+
+
+}
+
+/*************************************************************************
+ * 建立斯托克斯流 (Stokes Flow) 的初始右端项 (RHS)
+ *
+ * 物理背景: 微通道冷启动无体积力，无非线性对流项残差
+ * 操作:     仅执行全场清零，为后续的约束构件 (Constraint) 提供干净的画板
+ ************************************************************************/
+void PatchStrategy::buildInitFluidRHSOnPatch(hier::Patch<NDIM>& patch,
+                                             const double time, const double dt,
+                                             const string& component_name) {
+
+  /// 1. 使用宏一键提取 RHS 向量
+  GET_PATCH_DATA(patch, vec_data, F_rhs_id, Vector, double);
+
+  /// 2. 获取自由度映射信息 (流体节点有 NDIM+1 个自由度)
+  int* dof_map = F_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  double* vec_val = vec_data->getPointer();
+
+  int num_nodes = patch.getNumberOfNodes(1); // 包含 ghost 节点的本地总数
+
+  /// 3. 极简循环：直接遍历所有节点自由度，强行清零
+  for (int i = 0; i < num_nodes; ++i) {
+    for (int d = 0; d < NDIM + 1; ++d) {
+      int index = dof_map[i] + d;
+      vec_val[index] = 0.0;
+    }
+  }
+
+}
+/*************************************************************************
+ * 更新流体非线性迭代的解向量 (Newton-Raphson Update)
+ *
+ * 物理背景: u^{k+1} = u^k + \delta u,  p^{k+1} = p^k + \delta p
+ * 操作:     将刚刚由线性求解器算出的增量 (F_delta_id)
+ * 累加到当前的总流场解向量 (F_solution_id) 中。
+ * 同时更新用于后处理画图的独立数据片。
+ ************************************************************************/
+void PatchStrategy::updateFluidSolution(hier::Patch<NDIM>& patch,
+                                        const double time, const double dt,
+                                        const string& component_name) {
+
+  /// 使用宏提取【当前总解】和【增量解】的向量数据片
+  GET_PATCH_DATA(patch, sol_data, F_solution_id, Vector, double);
+  GET_PATCH_DATA(patch, delta_data, F_delta_id, Vector, double);
+
+  /// 使用宏提取用于可视化输出的节点数据片
+  GET_PATCH_DATA(patch, vel_plot, F_vel_plot_id, Node, double);
+  GET_PATCH_DATA(patch, pre_plot, F_pre_plot_id, Node, double);
+
+  /// 获取流体节点映射信息 (每个节点 NDIM + 1 个自由度)
+  int* dof_map = F_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
+
+  /// 获取底层一维数组指针
+  double* sol_val = sol_data->getPointer();
+  double* delta_val = delta_data->getPointer();
+
+  /// 获取节点数 (1 表示包含一层 ghost 节点，保证边界和并行通信更新完整)
+  int num_nodes = patch.getNumberOfNodes(1);
+
+  /// 极简循环：遍历所有节点，进行向量累加
+  for (int i = 0; i < num_nodes; ++i) {
+
+    /// 提取该节点在全局向量中的起始映射位置
+    int base_index = dof_map[i];
+
+    /// 累加速度分量 (u, v, w)
+    for (int d = 0; d < NDIM; ++d) {
+      int idx = base_index + d;
+
+      // 牛顿更新：旧值 + 增量
+      sol_val[idx] += delta_val[idx];
+
+      // 同步赋予画图数据片
+      (*vel_plot)(d, i) = sol_val[idx];
+    }
+
+    /// 累加压力分量 (p)，紧跟在速度自由度后面
+    int p_idx = base_index + NDIM;
+
+    // 牛顿更新
+    sol_val[p_idx] += delta_val[p_idx];
+
+    // 同步赋予画图数据片
+    (*pre_plot)(0, i) = sol_val[p_idx];
+  }
+}
+
+void PatchStrategy::buildFluidMatrixOnPatch(hier::Patch<NDIM>& patch, const double time,
+                                                const double dt, const string& component_name){
+  /// 取出本地PatchGeometry与PatchTopology
+  tbox::Pointer<hier::PatchGeometry<NDIM> > patch_geo = patch.getPatchGeometry();
+  tbox::Pointer<hier::PatchTopology<NDIM> > patch_top = patch.getPatchTopology();
+
+  /// 取出本地Patch的结点坐标数组
+  tbox::Pointer<pdat::NodeData<NDIM, double> > node_coord = patch_geo->getNodeCoordinates();
+
+  /// 使用宏获取实体与材料的单元数据片
+  GET_PATCH_DATA(patch, materialid_data, material_num_id, Cell, int);
+
+  /// 获取前一步的温度分布 (用于粘度 mu)
+  GET_PATCH_DATA(patch, T_data, th_Told_id, Node, double);
+  GET_PATCH_DATA(patch, vel_plot, F_vel_plot_id, Node, double);
+
+  /// 获取雅可比矩阵对象
+  GET_PATCH_DATA(patch, mat_data, F_matrix_id, CSRMatrix, double);
+  tbox::Array<int> can_extent, can_indices;
+  patch_top->getCellAdjacencyNodes(can_extent, can_indices);
+  int num_cells = patch.getNumberOfCells(1);
+  int* dof_map = F_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  for (int i = 0; i < num_cells; ++i){
+    /// 只考虑流体域
+    if((*materialid_data)(0,i)<100) continue;
+    int cell = i;
+    int n_vertex = can_extent[i + 1] - can_extent[i];
+    int n_dof = (NDIM + 1) * n_vertex;
+
+    tbox::Array<hier::DoubleVector<NDIM> > vertex(n_vertex);
+    tbox::Array<int> mapping(n_dof);
+    tbox::Array<double> T_val(n_vertex);
+
+    /// 专门存这几个节点的已知速度 u^k 的数组
+    tbox::Array<hier::DoubleVector<NDIM> > U_val(n_vertex);
+
+    for (int i1 = 0, j = can_extent[i]; i1 < n_vertex; ++i1, ++j) {
+      int node_idx = can_indices[j];
+
+      /// 提取温度
+      T_val[i1] = (*T_data)(0, node_idx);
+
+      /// 计算交替排列的自由度映射 [u, v, w, p]
+      for (int k = 0; k < NDIM + 1; ++k) {
+        mapping[i1 * (NDIM + 1) + k] = dof_map[node_idx] + k;
+      }
+
+      for (int k = 0; k < NDIM; ++k) {
+        /// 提取坐标
+        vertex[i1][k] = (*node_coord)(k, node_idx);
+
+        /// =========================================================
+        /// 直接从 NodeData 中获取维度 k 的速度分量
+        /// =========================================================
+        U_val[i1][k] = (*vel_plot)(k, node_idx);
+      }
+    }
+    /// 初始化单元局部矩阵
+    tbox::Pointer<tbox::Matrix<double> > ele_mat = new tbox::Matrix<double>();
+    ele_mat->resize(n_dof, n_dof);
+    for (int r = 0; r < n_dof; ++r) {
+      for (int c = 0; c < n_dof; ++c) {
+        (*ele_mat)(r, c) = 0.0;
+      }
+    }
+    /// 取出单元对象
+    tbox::Pointer<BaseElement<NDIM> > ele =
+        d_element_manager->getElement(d_element_type[0]);
+
+    /// =================================================================
+    /// 调用计算 N-S 雅可比的底层函数，传入 U_val
+    /// =================================================================
+    ele->buildFluidJacobianElementMatrix(vertex, dt, time, ele_mat,
+                                          (*materialid_data)(0, cell), T_val, U_val);
+    /// 累加单元矩阵到全局系统
+    for (int r = 0; r < n_dof; ++r) {
+      int row = mapping[r];
+      for (int c = 0; c < n_dof; ++c) {
+        int col = mapping[c];
+        mat_data->addMatrixValue(row, col, (*ele_mat)(r, c));
+      }
+    }
+  }
+
+
+}
+/// 流体力学边界条件施加
+void PatchStrategy::applyFluidJacobianConstraint(hier::Patch<NDIM>& patch, const double time,
+                                             const double dt, const string& component_name){
+  tbox::Pointer<pdat::CSRMatrixData<NDIM, double> > mat_data =
+      patch.getPatchData(F_matrix_id);
+  tbox::Pointer<pdat::VectorData<NDIM, double> > vec_data =
+      patch.getPatchData(F_rhs_id);
+
+  /// 直接取出边界掩码数据片
+  GET_PATCH_DATA(patch, fluid_boundary, boundary_fluid_di_id, Node, int);
+
+  /// 自由度信息中的映射信息 (NDIM+1个自由度)
+  int* dof_map = F_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
+
+  /// 确保 CSR 矩阵结构已装配完毕
+  mat_data->assemble();
+  /// 取出矩阵向量的核心数据结构的指针
+  int* row_start = mat_data->getRowStartPointer();
+  int* col_idx   = mat_data->getColumnIndicesPointer();
+  double* mat_val = mat_data->getValuePointer();
+  double* vec_val = vec_data->getPointer();
+
+  int num_nodes = patch.getNumberOfNodes(1);
+  for (int node_id = 0; node_id < num_nodes; ++node_id){
+    int bc_type = (*fluid_boundary)(0, node_id);
+
+    /// 如果是边界节点 (bc_type > 0)
+    if (bc_type > 0) {
+
+      if (bc_type == 1 || bc_type == 2) {
+        // 入口 (Inlet) 或 壁面 (Wall)
+        // 牛顿迭代解的是增量 \delta u，既然物理边界速度已知且固定，其增量严格为 0
+      } else {
+        // 其他类型的边界（例如自然边界/出口），不约束速度增量，直接跳过
+        continue;
+      }
+
+      /// 施加约束到速度分量的增量 (避开代表压力的最后一个 DOF)
+      for (int d = 0; d < NDIM; ++d) {
+        int index = dof_map[node_id] + d;
+
+        /// 右端项 (残差) 强制置 0
+        vec_val[index] = 0.0;
+
+        /// 极速对角化 1 法处理约束 (雅可比矩阵本就不对称，只需处理行即可)
+        for (int j = row_start[index]; j < row_start[index + 1]; ++j) {
+          if (col_idx[j] == index) {
+            mat_val[j] = 1.0;
+          } else {
+            mat_val[j] = 0.0;
+          }
+        }
+      } // end NDIM 循环
+    }
+  }
+}
+
+/*************************************************************************
+ * 计算 Navier-Stokes 方程的牛顿法右端项残差 (RHS Residual)
+ *
+ * 物理背景: 将当前宏观流场 u^k 和 p^k 代入 N-S 方程，计算系统的不平衡量
+ * 核心陷阱: 动量方程填充负残差 (-R_u)，连续性方程填充正残差 (+R_p)
+ ************************************************************************/
+void PatchStrategy::buildFluidResidualRHSOnPatch(hier::Patch<NDIM>& patch,
+                                                 const double time, const double dt,
+                                                 const string& component_name) {
+
+  tbox::Pointer<hier::PatchGeometry<NDIM> > patch_geo = patch.getPatchGeometry();
+  tbox::Pointer<hier::PatchTopology<NDIM> > patch_top = patch.getPatchTopology();
+  tbox::Pointer<pdat::NodeData<NDIM, double> > node_coord = patch_geo->getNodeCoordinates();
+
+  /// 1. 提取材料和 RHS 向量
+  GET_PATCH_DATA(patch, materialid_data, material_num_id, Cell, int);
+  GET_PATCH_DATA(patch, vec_data, F_rhs_id, Vector, double);
+
+  /// =================================================================
+  /// 【极其重要】：在组装前，必须将 RHS 向量清零！
+  /// 因为我们接下来是用加法 (+=) 累加每个单元的积分贡献。
+  /// =================================================================
+  vec_data->fillAll(0.0);
+
+  /// 2. 从持久化绘图场中提取上一迭代步的总解 u^k 和 p^k
+  GET_PATCH_DATA(patch, vel_plot, F_vel_plot_id, Node, double);
+  GET_PATCH_DATA(patch, pre_plot, F_pre_plot_id, Node, double);
+
+  tbox::Array<int> can_extent, can_indices;
+  patch_top->getCellAdjacencyNodes(can_extent, can_indices);
+  int num_cells = patch.getNumberOfCells(1);
+  int* dof_map = d_dof_info_fluid->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  double* vec_val = vec_data->getPointer();
+
+  /// 3. 遍历单元进行 RHS 组装
+  for (int i = 0; i < num_cells; ++i) {
+    int cell = i;
+
+    /// 严格区分流固域 (与雅可比矩阵保持一致)
+    if ((*materialid_data)(0, cell) <= 100) {
+      continue;
+    }
+
+    int n_vertex = can_extent[i + 1] - can_extent[i];
+    int n_dof = (NDIM + 1) * n_vertex;
+
+    tbox::Array<hier::DoubleVector<NDIM> > vertex(n_vertex);
+    tbox::Array<int> mapping(n_dof);
+
+    /// 存放当前单元节点上的已知速度和压力
+    tbox::Array<hier::DoubleVector<NDIM> > U_val(n_vertex);
+    tbox::Array<double> P_val(n_vertex);
+
+    for (int i1 = 0, j = can_extent[i]; i1 < n_vertex; ++i1, ++j) {
+      int node_idx = can_indices[j];
+
+      for (int k = 0; k < NDIM + 1; ++k) {
+        mapping[i1 * (NDIM + 1) + k] = dof_map[node_idx] + k;
+      }
+
+      for (int k = 0; k < NDIM; ++k) {
+        vertex[i1][k] = (*node_coord)(k, node_idx);
+        U_val[i1][k] = (*vel_plot)(k, node_idx); // 提取速度
+      }
+      P_val[i1] = (*pre_plot)(0, node_idx);      // 提取压力
+    }
+
+    /// 初始化单元局部 RHS 向量
+    tbox::Array<double> ele_vec(n_dof);
+    for (int r = 0; r < n_dof; ++r) {
+      ele_vec[r] = 0.0;
+    }
+
+    /// 调用底层的残差高斯积分函数
+    tbox::Pointer<BaseElement<NDIM> > ele = d_element_manager->getElement(d_element_type[0]);
+    //    ele->buildFluidResidual_ElementVector(vertex, dt, time, ele_vec,
+    //                                          (*materialid_data)(0, cell), U_val, P_val);
+
+    /// 将局部残差累加到全局 RHS 向量
+    for (int r = 0; r < n_dof; ++r) {
+      vec_val[mapping[r]] += ele_vec[r];
+    }
+  }
+}
 
 void PatchStrategy::Electric_PostProcesing(hier::Patch<NDIM>& patch, const double time,
                                            const double dt, const string& component_name)
@@ -3609,6 +4052,22 @@ void PatchStrategy::getFromInput(tbox::Pointer<tbox::Database> db) {
   } else {
     TBOX_ERROR(d_object_name << ": "
                << " No key `viscosity' found in data." << endl);
+  }
+
+
+  if (db->keyExists("inlet_velocity_mark")) {
+    inlet_velocity_mark_id = db->getIntegerArray("inlet_velocity_mark");
+  } else {
+    TBOX_ERROR(d_object_name << ": "
+               << " No key `inlet_velocity_mark' found in data." << endl);
+  }
+
+
+  if (db->keyExists("wall_velocity_mark")) {
+    wall_velocity_mark_id = db->getIntegerArray("wall_velocity_mark");
+  } else {
+    TBOX_ERROR(d_object_name << ": "
+               << " No key `wall_velocity_mark' found in data." << endl);
   }
 
 

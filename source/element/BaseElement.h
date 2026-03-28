@@ -228,6 +228,19 @@ public:
       const double time, tbox::Pointer<tbox::Vector<double> > ele_vec,
       int entity_id, tbox::Array<double> T_val);
 
+
+  virtual void buildInitFluidElementMatrix(
+      tbox::Array<hier::DoubleVector<NDIM> > real_vertex, const double dt,
+      const double time, tbox::Pointer<tbox::Matrix<double> > ele_mat,
+      int entity_id,tbox::Array<double> T_val,double *mu);
+
+  virtual void buildFluidJacobianElementMatrix(
+      tbox::Array<hier::DoubleVector<NDIM> > real_vertex, const double dt,
+      const double time, tbox::Pointer<tbox::Matrix<double> > ele_mat,
+      int entity_id, tbox::Array<double> T_val,
+      tbox::Array<hier::DoubleVector<NDIM> > U_val);
+
+
   ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   /**

@@ -181,7 +181,7 @@ private:
   tbox::Pointer<solv::BaseLinearSolver<NDIM> > d_solver_s;
   tbox::Pointer<solv::BaseLinearSolver<NDIM> > d_solver_th;
   tbox::Pointer<solv::BaseLinearSolver<NDIM> > d_solver_E;
-
+  tbox::Pointer<solv::BaseLinearSolver<NDIM> > d_solver_F;
   //update #6
   //！@brief 步长构件： 计算时间步长
   tbox::Pointer<algs::DtIntegratorComponent<NDIM> > d_dt_update;
@@ -196,6 +196,15 @@ private:
   /*!@brief 数值构件: 加载载荷 */
   tbox::Pointer<algs::NumericalIntegratorComponent<NDIM> > th_num_intc_load;
   tbox::Pointer<algs::NumericalIntegratorComponent<NDIM> > th_num_intc_plot;
+
+  /*!@brief 数值构件: 计算矩阵 */
+  tbox::Pointer<algs::NumericalIntegratorComponent<NDIM> > F_stokes_num_intc_mat;
+  /*!@brief 数值构件: 计算右端项 */
+  tbox::Pointer<algs::NumericalIntegratorComponent<NDIM> > F_num_intc_rhs;
+  /*!@brief 数值构件: 加载约束 */
+  tbox::Pointer<algs::NumericalIntegratorComponent<NDIM> > F_stokes_num_intc_cons;
+  /// 处理更新的NS方程值
+  tbox::Pointer<algs::NumericalIntegratorComponent<NDIM> > F_num_intc_update;
 
   //update #9 热计算电值构件
   /*!@brief 数值构件: 计算矩阵 */

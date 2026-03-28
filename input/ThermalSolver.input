@@ -68,6 +68,15 @@ FEM {
             residual_tol= 1.0e-10
             print_iter_info    = 1
         }
+	SolverF {
+            solver_name = "HYPRE_PCG"
+            solver_tol      = 1.0e-40                    // 解法器阈值
+            solver_max_iter = 10000                      // 解法器最大迭代步数
+            solver_min_iter = 1                         // 解法器最小迭代步数
+            max_iter = 5000
+            residual_tol= 1.0e-10
+            print_iter_info    = 1
+        }
         SolverT {
             solver_name = "HYPRE_PCG"
             solver_tol      = 1.0e-40                    // 解法器阈值
@@ -88,6 +97,8 @@ FEM {
     query_file_name = "../input/TempQuery.dat"
     time_domain_solving = FALSE
     viscosity = 1.01e-3
+    wall_velocity_mark = 0
+    inlet_velocity_mark = 0
     Domain{
         fluid_domain = 1
         solid_domain = 2

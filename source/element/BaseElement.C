@@ -233,6 +233,27 @@ void BaseElement<DIM>::buildE_ElementMatrix(
         "is right! ");
 }
 
+
+template <int DIM>
+void BaseElement<DIM>::buildInitFluidElementMatrix(
+    tbox::Array<hier::DoubleVector<NDIM> > real_vertex, const double dt,
+    const double time, tbox::Pointer<tbox::Matrix<double> > ele_mat,
+    int entity_id, tbox::Array<double> T_val,double *mu)
+{
+  TBOX_WARNING(
+        "Function buildInitFluidElementMatrix is not implemented, please make sure your code "
+        "is right! ");
+}
+
+template <int DIM>
+void BaseElement<DIM>::buildFluidJacobianElementMatrix(
+    tbox::Array<hier::DoubleVector<NDIM> > real_vertex, const double dt,
+    const double time, tbox::Pointer<tbox::Matrix<double> > ele_mat,
+    int entity_id, tbox::Array<double> T_val,
+    tbox::Array<hier::DoubleVector<NDIM> > U_val){
+
+}
+
 /**
  * @brief 计算电求解单元右端项.
  *

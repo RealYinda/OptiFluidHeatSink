@@ -43,6 +43,8 @@ ElasFlow::ElasFlow(
         d_solver_db->getDatabase ("SolverTH")->getString("solver_name"));
   d_solver_E = d_solver_manager->lookupLinearSolver(
         d_solver_db->getDatabase ("SolverE")->getString("solver_name"));
+  d_solver_F = d_solver_manager->lookupLinearSolver(
+        d_solver_db->getDatabase ("SolverF")->getString("solver_name"));
   d_object_name = object_name;
   t_fem_build_matrix =
       tbox::TimerManager::getManager()->getTimer("ELAS::FEM::buildMatrix");
@@ -128,6 +130,19 @@ void ElasFlow::initializeLevelIntegrator(
   th_num_intc_plot = new algs::NumericalIntegratorComponent<NDIM>(
         "TH_PLOT", d_patch_strategy, manager);
 
+
+  // 数值构件: 计算矩阵.
+  F_stokes_num_intc_mat = new algs::NumericalIntegratorComponent<NDIM>(
+        "F_MAT_INIT", d_patch_strategy, manager);
+  // 数值构件: 计算右端项.
+  F_num_intc_rhs = new algs::NumericalIntegratorComponent<NDIM>(
+        "F_RHS", d_patch_strategy, manager);
+  // 数值构件: 计算约束.  Thermal_PostProcesing
+  F_stokes_num_intc_cons = new algs::NumericalIntegratorComponent<NDIM>(
+        "F_CONS_INIT", d_patch_strategy, manager);
+  F_num_intc_update = new algs::NumericalIntegratorComponent<NDIM>(
+        "F_UPDATE", d_patch_strategy, manager);
+
   //update #9 电计算数值构件
   // 数值构件: 计算矩阵.
   E_num_intc_mat = new algs::NumericalIntegratorComponent<NDIM>(
@@ -204,6 +219,39 @@ int ElasFlow::advanceLevel(
   /// 获取参数
   tbox::Pointer<PatchStrategy> p_strategy = d_patch_strategy;
 
+  if (step_number == 0){
+    /// ========================================================
+    /// “初始猜测值”
+    /// ========================================================
+    d_alloc_fluid_data->allocatePatchData(patch_level, current_time + predict_dt);
+    tbox::pout << "**************************";
+    tbox::pout << "--- Initial value for N-S system ---";
+    tbox::pout << "**************************"<<endl;
+
+    F_stokes_num_intc_mat->computing(patch_level, current_time, actual_dt);
+    F_num_intc_rhs->computing(patch_level, current_time, actual_dt);
+    F_stokes_num_intc_cons->computing(patch_level, current_time, actual_dt);
+    int mat_id_F = p_strategy->getF_MatrixID();
+    int vec_id_F = p_strategy->getF_RHSID();
+    int delta_id_F = p_strategy->getF_DeltaID();
+    d_solver_F->setMatrix(mat_id_F);
+    d_solver_F->setRHS(vec_id_F);
+    d_solver_F->solve(first_step, delta_id_F, patch_level, d_solver_db->getDatabase ("SolverF"));
+    F_num_intc_update->computing(patch_level, current_time, 0.0);
+    d_alloc_fluid_data->deallocatePatchData(patch_level);
+  }
+  /// ========================================================
+  /// Newton-Raphson iterations
+  /// ========================================================
+  int max_newton_iter = 20;
+  double current_error = 1.0;
+  int iter = 0;
+  while (iter < max_newton_iter && current_error > 1e-6){
+    tbox::pout << "**************************";
+    tbox::pout << "--- Newton-Raphson iteration number: " << iter << " ---" ;
+    tbox::pout << "**************************"<<endl;
+
+  }
   tbox::pout << "**************************";
   tbox::pout << "电场方程求解中";
   tbox::pout << "**************************"<<endl;

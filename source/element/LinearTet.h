@@ -34,6 +34,7 @@
 #include "Array.h"
 //自定义宏管理文件
 #include "MacrosManager.h"
+#include "JAUMIN_Macros.h"
 
 using namespace JAUMIN;
 
@@ -223,6 +224,8 @@ public:
       tbox::Array<hier::DoubleVector<NDIM> > real_vertex, const double dt,
       const double time, tbox::Pointer<tbox::Matrix<double> > ele_mat,int entity_id,tbox::Array<double> T_val);
 
+
+
   /**
    * @brief 计算电求解单元右端项.
    *
@@ -240,7 +243,14 @@ public:
 	  int entity_id, tbox::Array<double> T_val);
 
   ////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+  virtual void buildInitFluidElementMatrix(
+      tbox::Array<hier::DoubleVector<NDIM> > real_vertex, const double dt,
+      const double time, tbox::Pointer<tbox::Matrix<double> > ele_mat,int entity_id,tbox::Array<double> T_val,double *mu);
+  virtual void buildFluidJacobianElementMatrix(
+      tbox::Array<hier::DoubleVector<NDIM> > real_vertex, const double dt,
+      const double time, tbox::Pointer<tbox::Matrix<double> > ele_mat,
+      int entity_id, tbox::Array<double> T_val,
+      tbox::Array<hier::DoubleVector<NDIM> > U_val);
   /**
    * @brief 获取单元求解问题维数.
    *

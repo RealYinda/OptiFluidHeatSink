@@ -325,6 +325,46 @@ public:
   void applyInitFluidConstraint(hier::Patch<NDIM>& patch, const double time,
                                 const double dt, const string& component_name);
 
+  /**
+   * @brief 流体方程牛顿法矩阵组装
+   * @param patch
+   * @param time
+   * @param dt
+   * @param component_name
+   */
+  void buildFluidMatrixOnPatch(hier::Patch<NDIM>& patch, const double time,
+                             const double dt, const string& component_name);
+  /**
+   * @brief 流体方程牛顿法边界条件施加
+   * @param patch
+   * @param time
+   * @param dt
+   * @param component_name
+   */
+  void applyFluidJacobianConstraint(hier::Patch<NDIM>& patch, const double time,
+                                    const double dt, const string& component_name);
+  /**
+   * @brief 流体方程牛顿法边界条件施加
+   * @param patch
+   * @param time
+   * @param dt
+   * @param component_name
+   */
+  void buildFluidResidualRHSOnPatch(hier::Patch<NDIM>& patch, const double time,
+                                    const double dt, const string& component_name);
+
+
+  /*!
+     * @brief 更新流体力学牛顿迭代的解向量.
+     *
+     * @param patch          输入参数, 网格片类, 表示网格片.
+     * @param time           输入参数, 双精度浮点型, 表示当前时刻.
+     * @param dt             输入参数, 双精度浮点型, 表示时间步长.
+     * @param component_name 输入参数, 字符串, 表示数值构件的名称.
+     */
+  void updateFluidSolution(hier::Patch<NDIM>& patch, const double time,
+                           const double dt, const string& component_name);
+
   /*!
    * @brief 完成热计算后处理
    * @param patch          输入参数, 网格片类, 表示网格片.
@@ -379,6 +419,8 @@ public:
   void InitDOFsComponent(hier::Patch<NDIM>& patch);
   /// 材料初始化模块的功能
   void InitMaterialComponent(hier::Patch<NDIM>& patch);
+  /// 边界初始化模块的功能
+  void InitBoundaryComponent(hier::Patch<NDIM>& patch);
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   ///////////////////////////////////////////////update #9///////////////////////////////////////////////////
@@ -494,6 +536,10 @@ public:
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+  int getF_MatrixID() { return F_matrix_id; }
+  int getF_SolutionID() { return F_solution_id; }
+  int getF_RHSID() { return F_rhs_id; }
+  int getF_DeltaID() { return F_delta_id; }
 
   /**
    * @brief 获取自由度信息
@@ -750,6 +796,8 @@ private:
   /// 流体力学求解domain
   tbox::Array<int> F_domain_solution;
   double viscosity; ///粘度
+  tbox::Array<int> inlet_velocity_mark_id;
+  tbox::Array<int> wall_velocity_mark_id;
 
   /// 输入数据库指针.
   tbox::Pointer<tbox::Database> d_input_db;
@@ -816,6 +864,9 @@ private:
   /// 2:邻接单元也不在tool region中心
   /// 戳啦,2不用设置
   int d_contained_domain_id;
+
+  /// 边界条件限定狄利克雷关系
+  int boundary_fluid_di_id;
 
 
   /// For TetQuad

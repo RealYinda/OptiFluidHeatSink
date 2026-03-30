@@ -1,4 +1,4 @@
-//
+﻿//
 // 文件名:     PatchStrategy.C
 // 软件包:     JAUMIN
 // 版权　:     北京应用物理与计算数学研究所
@@ -436,9 +436,22 @@ void PatchStrategy::initializeComponent(
     component->registerCommunicationPatchData(th_Told_id, th_Told_id);
     component->registerCommunicationPatchData(th_Tolder_id, th_Tolder_id);
   } else if (component_name == "F_CONS_INIT") {  // 数值构件，加载约束.
+    component->registerCommunicationPatchData(boundary_fluid_di_id, boundary_fluid_di_id);
   } else if (component_name == "F_MAT_INIT") {   // 数值构件，计算矩阵。
     component->registerCommunicationPatchData(th_Told_id, th_Told_id);
+    component->registerCommunicationPatchData(F_vel_plot_id, F_vel_plot_id);
+    component->registerCommunicationPatchData(F_pre_plot_id, F_pre_plot_id);
   } else if (component_name == "F_RHS") {   // 数值构件，计算右端项.
+  }else if (component_name == "F_CONS_RES") {  // 数值构件，加载约束.
+    component->registerCommunicationPatchData(boundary_fluid_di_id, boundary_fluid_di_id);
+  } else if (component_name == "F_MAT_RES") {   // 数值构件，计算矩阵。
+    component->registerCommunicationPatchData(th_Told_id, th_Told_id);
+    component->registerCommunicationPatchData(F_vel_plot_id, F_vel_plot_id);
+    component->registerCommunicationPatchData(F_pre_plot_id, F_pre_plot_id);
+  } else if (component_name == "F_RHS_RES") {   // 数值构件，计算右端项.
+    component->registerCommunicationPatchData(th_Told_id, th_Told_id);
+    component->registerCommunicationPatchData(F_vel_plot_id, F_vel_plot_id);
+    component->registerCommunicationPatchData(F_pre_plot_id, F_pre_plot_id);
   }else if (component_name == "DISPLACEMENT") {  // 数值构件, 更新位移.
     component->registerCommunicationPatchData(d_solution_id, d_solution_id);
   } else if (component_name == "STRESS") {        // 数值构件, 计算应力.
@@ -994,6 +1007,12 @@ void PatchStrategy::computeOnPatch(hier::Patch<NDIM>& patch, const double time,
     buildInitFluidRHSOnPatch(patch, time, dt, component_name);
   } else if (component_name == "F_CONS_INIT") {
     applyInitFluidConstraint(patch, time, dt, component_name);
+  }else if (component_name == "F_MAT_RES") {
+    buildFluidMatrixOnPatch(patch, time, dt, component_name);
+  }else if (component_name == "F_RHS_RES") {
+    buildFluidResidualRHSOnPatch(patch, time, dt, component_name);
+  }else if (component_name == "F_CONS_RES") {
+    applyFluidJacobianConstraint(patch, time, dt, component_name);
   } else {
     TBOX_ERROR(" PatchStrategy :: component name is error! ");
   }
@@ -3530,7 +3549,7 @@ void PatchStrategy::updateFluidSolution(hier::Patch<NDIM>& patch,
   GET_PATCH_DATA(patch, sol_data, F_solution_id, Vector, double);
   GET_PATCH_DATA(patch, delta_data, F_delta_id, Vector, double);
 
-  /// 使用宏提取用于可视化输出的节点数据片
+  /// 使用宏提取持久化的节点数据片（这里面安全地存放着上一迭代步的解）
   GET_PATCH_DATA(patch, vel_plot, F_vel_plot_id, Node, double);
   GET_PATCH_DATA(patch, pre_plot, F_pre_plot_id, Node, double);
 
@@ -3550,25 +3569,31 @@ void PatchStrategy::updateFluidSolution(hier::Patch<NDIM>& patch,
     /// 提取该节点在全局向量中的起始映射位置
     int base_index = dof_map[i];
 
-    /// 累加速度分量 (u, v, w)
+    /// 1. 更新速度分量 (u, v, w)
     for (int d = 0; d < NDIM; ++d) {
       int idx = base_index + d;
 
-      // 牛顿更新：旧值 + 增量
-      sol_val[idx] += delta_val[idx];
+      // 【核心修改】：从安全的画图场读取旧值，加上刚刚解出的增量
+      double new_vel = (*vel_plot)(d, i) + delta_val[idx];
 
-      // 同步赋予画图数据片
-      (*vel_plot)(d, i) = sol_val[idx];
+      // 将最新解填入代数向量 (供后续操作，如残差范数计算使用)
+      sol_val[idx] = new_vel;
+
+      // 立即刷新画图场，完成持久化更新
+      (*vel_plot)(d, i) = new_vel;
     }
 
-    /// 累加压力分量 (p)，紧跟在速度自由度后面
+    /// 2. 更新压力分量 (p)，紧跟在速度自由度后面
     int p_idx = base_index + NDIM;
 
-    // 牛顿更新
-    sol_val[p_idx] += delta_val[p_idx];
+    // 【核心修改】：从安全的画图场读取旧压力，加上压力增量
+    double new_pre = (*pre_plot)(0, i) + delta_val[p_idx];
 
-    // 同步赋予画图数据片
-    (*pre_plot)(0, i) = sol_val[p_idx];
+    // 填入代数向量
+    sol_val[p_idx] = new_pre;
+
+    // 刷新画图场
+    (*pre_plot)(0, i) = new_pre;
   }
 }
 
@@ -3732,10 +3757,11 @@ void PatchStrategy::buildFluidResidualRHSOnPatch(hier::Patch<NDIM>& patch,
   /// 1. 提取材料和 RHS 向量
   GET_PATCH_DATA(patch, materialid_data, material_num_id, Cell, int);
   GET_PATCH_DATA(patch, vec_data, F_rhs_id, Vector, double);
+  GET_PATCH_DATA(patch, T_data, th_Told_id, Node, double);
 
   /// =================================================================
-  /// 【极其重要】：在组装前，必须将 RHS 向量清零！
-  /// 因为我们接下来是用加法 (+=) 累加每个单元的积分贡献。
+  /// 在组装前，必须将 RHS 向量清零！
+  /// 接下来是用加法累加每个单元的积分贡献。
   /// =================================================================
   vec_data->fillAll(0.0);
 
@@ -3746,7 +3772,7 @@ void PatchStrategy::buildFluidResidualRHSOnPatch(hier::Patch<NDIM>& patch,
   tbox::Array<int> can_extent, can_indices;
   patch_top->getCellAdjacencyNodes(can_extent, can_indices);
   int num_cells = patch.getNumberOfCells(1);
-  int* dof_map = d_dof_info_fluid->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  int* dof_map = F_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
   double* vec_val = vec_data->getPointer();
 
   /// 3. 遍历单元进行 RHS 组装
@@ -3760,7 +3786,7 @@ void PatchStrategy::buildFluidResidualRHSOnPatch(hier::Patch<NDIM>& patch,
 
     int n_vertex = can_extent[i + 1] - can_extent[i];
     int n_dof = (NDIM + 1) * n_vertex;
-
+    tbox::Array<double> T_val(n_vertex);
     tbox::Array<hier::DoubleVector<NDIM> > vertex(n_vertex);
     tbox::Array<int> mapping(n_dof);
 
@@ -3770,7 +3796,7 @@ void PatchStrategy::buildFluidResidualRHSOnPatch(hier::Patch<NDIM>& patch,
 
     for (int i1 = 0, j = can_extent[i]; i1 < n_vertex; ++i1, ++j) {
       int node_idx = can_indices[j];
-
+      T_val[i1] = (*T_data)(0, node_idx);
       for (int k = 0; k < NDIM + 1; ++k) {
         mapping[i1 * (NDIM + 1) + k] = dof_map[node_idx] + k;
       }
@@ -3790,7 +3816,7 @@ void PatchStrategy::buildFluidResidualRHSOnPatch(hier::Patch<NDIM>& patch,
 
     /// 调用底层的残差高斯积分函数
     tbox::Pointer<BaseElement<NDIM> > ele = d_element_manager->getElement(d_element_type[0]);
-    //    ele->buildFluidResidual_ElementVector(vertex, dt, time, ele_vec,
+    //    ele->buildFluidResidualElementVector(vertex, dt, time, ele_vec,
     //                                          (*materialid_data)(0, cell), U_val, P_val);
 
     /// 将局部残差累加到全局 RHS 向量

@@ -206,6 +206,14 @@ private:
   /// 处理更新的NS方程值
   tbox::Pointer<algs::NumericalIntegratorComponent<NDIM> > F_num_intc_update;
 
+  /*!@brief 数值构件: 组装非线性残差 */
+  tbox::Pointer<algs::NumericalIntegratorComponent<NDIM> > F_num_intc_resid;
+  /*!@brief 数值构件: 计算矩阵 */
+  tbox::Pointer<algs::NumericalIntegratorComponent<NDIM> > F_num_intc_jacob;
+  /*!@brief 数值构件: 边界条件 */
+  tbox::Pointer<algs::NumericalIntegratorComponent<NDIM> > F_num_intc_cons;
+
+
   //update #9 热计算电值构件
   /*!@brief 数值构件: 计算矩阵 */
   tbox::Pointer<algs::NumericalIntegratorComponent<NDIM> > E_num_intc_mat;
@@ -223,5 +231,8 @@ private:
   tbox::Pointer<tbox::Timer> t_fem_build_matrix;
   tbox::Pointer<tbox::Timer> t_fem_solve;
   tbox::Pointer<tbox::Timer> t_fem_post;
+
+  tbox::Pointer<JPSOL::JVector<NDIM,double> > J_F_delta_vec;
+  tbox::Pointer<JPSOL::JVector<NDIM,double> > J_F_sol_vec;
 };
 #endif

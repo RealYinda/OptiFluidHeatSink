@@ -143,6 +143,13 @@ void ElasFlow::initializeLevelIntegrator(
   F_num_intc_update = new algs::NumericalIntegratorComponent<NDIM>(
         "F_UPDATE", d_patch_strategy, manager);
 
+  F_num_intc_resid = new algs::NumericalIntegratorComponent<NDIM>(
+        "F_RHS_RES", d_patch_strategy, manager);
+  F_num_intc_jacob = new algs::NumericalIntegratorComponent<NDIM>(
+        "F_MAT_RES", d_patch_strategy, manager);
+  F_num_intc_cons = new algs::NumericalIntegratorComponent<NDIM>(
+        "F_CONS_RES", d_patch_strategy, manager);
+
   //update #9 电计算数值构件
   // 数值构件: 计算矩阵.
   E_num_intc_mat = new algs::NumericalIntegratorComponent<NDIM>(
@@ -247,9 +254,30 @@ int ElasFlow::advanceLevel(
   double current_error = 1.0;
   int iter = 0;
   while (iter < max_newton_iter && current_error > 1e-6){
+    d_alloc_fluid_data->allocatePatchData(patch_level, current_time + predict_dt);
     tbox::pout << "**************************";
     tbox::pout << "--- Newton-Raphson iteration number: " << iter << " ---" ;
     tbox::pout << "**************************"<<endl;
+    F_num_intc_resid->computing(patch_level, current_time, actual_dt);
+    F_num_intc_jacob->computing(patch_level, current_time, actual_dt);
+    F_num_intc_cons->computing(patch_level, current_time, actual_dt);
+    int mat_id_F = p_strategy->getF_MatrixID();
+    int vec_id_F = p_strategy->getF_RHSID();
+    int delta_id_F = p_strategy->getF_DeltaID();
+    int sol_id_F = p_strategy->getF_SolutionID();
+    d_solver_F->setMatrix(mat_id_F);
+    d_solver_F->setRHS(vec_id_F);
+    d_solver_F->solve(first_step, delta_id_F, patch_level, d_solver_db->getDatabase ("SolverF"));
+    F_num_intc_update->computing(patch_level, current_time, 0.0);
+    /// 判断是否收敛
+    J_F_sol_vec = new JPSOL::JVector<NDIM, double>(patch_level, sol_id_F);
+    J_F_delta_vec = new JPSOL::JVector<NDIM, double>(patch_level, delta_id_F);
+    double sol_L2Norm = J_F_sol_vec->l2Norm();
+    double delta_L2Norm = J_F_delta_vec->l2Norm();
+    current_error = delta_L2Norm/(sol_L2Norm+1e-15);
+    tbox::pout << "    Iter: " << iter
+                   << " | Delta Norm: " << delta_L2Norm
+                   << " | Rel Error: " << current_error << endl;
 
   }
   tbox::pout << "**************************";

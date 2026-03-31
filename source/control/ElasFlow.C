@@ -312,7 +312,7 @@ int ElasFlow::advanceLevel(
 #endif
   /////////////////////////////////////////////////////////////////////////////////////////////
 
-
+#if 0
   ///////////////////////////////////////////////////////////////////////////////////////////
   tbox::pout<<"热传导方程求解中...... "<<endl;
 
@@ -347,6 +347,7 @@ int ElasFlow::advanceLevel(
     outdata.open("T_max",ios::app);
     outdata<<current_time+actual_dt<<"\t"<<max[0]<<endl;
   }
+  #endif
   /////////////////////////////////////////////////////////////////////////////////////////////
   #if 0
   //计时开始函数
@@ -405,6 +406,7 @@ int ElasFlow::advanceLevel(
   }
 
   #endif
+
 
   actual_dt = predict_dt;
   d_alloc_data->deallocatePatchData(patch_level);

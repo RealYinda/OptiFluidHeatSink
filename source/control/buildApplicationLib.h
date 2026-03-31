@@ -30,10 +30,12 @@
 #include "ShapeFunctionManager.h"
 #include "IntegratorManager.h"
 #include "Material.h"
+
 #include "TetrahedronShapeFunction.h"
 #include "TetrahedronIntegrator.h"
-
 #include "LinearTet.h"
+
+#include "PrismShapeFunction.h"
 
 using namespace JAUMIN;
 
@@ -107,9 +109,12 @@ void buildApplicationLib() {
   material_manager->addMaterial(material_101);
 
   /// 添加一个形函数到形函数管理器.
-  tbox::Pointer<BaseShapeFunction<NDIM> > func =
+  tbox::Pointer<BaseShapeFunction<NDIM> > func_1 =
       new TetrahedronShapeFunction("LinearTetrahedron");
-  func_manager->addShapeFunction(func);
+  func_manager->addShapeFunction(func_1);
+  tbox::Pointer<BaseShapeFunction<NDIM> > func_2 =
+      new PrismShapeFunction("LinearPrism");
+  func_manager->addShapeFunction(func_2);
 
   /// 添加一个积分器到积分器管理器.
   tbox::Pointer<BaseIntegrator<NDIM> > integrator =

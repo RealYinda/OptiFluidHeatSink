@@ -20,6 +20,8 @@
  */
 
 #include "LinearTet.h"
+#include "LinearPrism.h"
+
 #include "Pointer.h"
 #include "Array.h"
 
@@ -36,6 +38,7 @@
 #include "LinearTet.h"
 
 #include "PrismShapeFunction.h"
+#include "PrismIntegrator.h"
 
 using namespace JAUMIN;
 
@@ -51,8 +54,10 @@ void buildApplicationLib() {
       MaterialManager<NDIM>::getManager();
 
   /// 添加一个单元到单元管理器.
-  tbox::Pointer<LinearTet> linear_ele = new LinearTet("LinearTetrahedron");
-  ele_manager->addElement(linear_ele);
+  tbox::Pointer<LinearTet> linear_ele_1 = new LinearTet("LinearTetrahedron");
+  ele_manager->addElement(linear_ele_1);
+  tbox::Pointer<LinearPrism> linear_ele_2 = new LinearPrism("LinearPrism");
+  ele_manager->addElement(linear_ele_2);
 
   /// 添加一种材料到材料管理器.
   //tbox::Pointer<Material> material = new Material("LinearTetrahedron");
@@ -122,7 +127,7 @@ void buildApplicationLib() {
   integrator_manager->addIntegrator(integrator_1);
   /// 添加一个积分器到积分器管理器.
   tbox::Pointer<BaseIntegrator<NDIM> > integrator_2 =
-      new TetrahedronIntegrator(2, "LinearTetrahedron");
+      new PrismIntegrator(2, "LinearPrism");
   integrator_manager->addIntegrator(integrator_2);
 
 }

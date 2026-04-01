@@ -117,7 +117,12 @@ void buildApplicationLib() {
   func_manager->addShapeFunction(func_2);
 
   /// 添加一个积分器到积分器管理器.
-  tbox::Pointer<BaseIntegrator<NDIM> > integrator =
+  tbox::Pointer<BaseIntegrator<NDIM> > integrator_1 =
       new TetrahedronIntegrator(1, "LinearTetrahedron");
-  integrator_manager->addIntegrator(integrator);
+  integrator_manager->addIntegrator(integrator_1);
+  /// 添加一个积分器到积分器管理器.
+  tbox::Pointer<BaseIntegrator<NDIM> > integrator_2 =
+      new TetrahedronIntegrator(2, "LinearTetrahedron");
+  integrator_manager->addIntegrator(integrator_2);
+
 }

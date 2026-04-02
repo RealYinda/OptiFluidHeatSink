@@ -24,14 +24,14 @@ Main{
 FEM {
     problem_type = "elas"
 
-    element_type       = "LinearTetrahedron"     // 单元类型
-    element_marks       = 0                      // 单元类型
-    integrator_type    = "LinearTetrahedron"     // 积分器类型
-    integrator_marks   = 0
+    element_type       = "LinearTetrahedron","LinearPrism"     // 单元类型
+    element_marks       = 0,1                      // 单元类型
+    integrator_type    = "LinearTetrahedron","LinearPrism"     // 积分器类型
+    integrator_marks   = 0,1
     material_type      = "LinearTetrahedron"     // 材料类型
     material_marks     = 0
-    shape_func_type    = "LinearTetrahedron"     // 形函数类型
-    shape_func_marks   = 0
+    shape_func_type    = "LinearTetrahedron","LinearPrism"     // 形函数类型
+    shape_func_marks   = 0,1
     Solver {
         SolverTH {
             solver_name = "HYPRE_PCG"

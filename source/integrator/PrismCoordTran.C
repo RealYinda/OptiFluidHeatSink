@@ -28,12 +28,15 @@ void PrismCoordTran::local2Global(
   double zeta = lp[2];
 
   double N[6];
-  N[0] = xi * (1.0 - zeta) / 2.0;
-  N[1] = eta * (1.0 - zeta) / 2.0;
-  N[2] = (1.0 - xi - eta) * (1.0 - zeta) / 2.0;
-  N[3] = xi * (1.0 + zeta) / 2.0;
-  N[4] = eta * (1.0 + zeta) / 2.0;
-  N[5] = (1.0 - xi - eta) * (1.0 + zeta) / 2.0;
+  // 节点 0, 1, 2 (底面)
+  N[0] = (1.0 - xi - eta) * (1.0 - zeta) / 2.0;
+  N[1] = xi * (1.0 - zeta) / 2.0;
+  N[2] = eta * (1.0 - zeta) / 2.0;
+
+  // 节点 3, 4, 5 (顶面)
+  N[3] = (1.0 - xi - eta) * (1.0 + zeta) / 2.0;
+  N[4] = xi * (1.0 + zeta) / 2.0;
+  N[5] = eta * (1.0 + zeta) / 2.0;
 
   gp[0] = 0.0; gp[1] = 0.0; gp[2] = 0.0;
   for (int i = 0; i < 6; ++i) {
@@ -65,12 +68,15 @@ void PrismCoordTran::global2Local(
 
   for (int iter = 0; iter < max_iter; ++iter) {
     double N[6];
-    N[0] = xi * (1.0 - zeta) / 2.0;
-    N[1] = eta * (1.0 - zeta) / 2.0;
-    N[2] = (1.0 - xi - eta) * (1.0 - zeta) / 2.0;
-    N[3] = xi * (1.0 + zeta) / 2.0;
-    N[4] = eta * (1.0 + zeta) / 2.0;
-    N[5] = (1.0 - xi - eta) * (1.0 + zeta) / 2.0;
+    // 节点 0, 1, 2 (底面)
+    N[0] = (1.0 - xi - eta) * (1.0 - zeta) / 2.0;
+    N[1] = xi * (1.0 - zeta) / 2.0;
+    N[2] = eta * (1.0 - zeta) / 2.0;
+
+    // 节点 3, 4, 5 (顶面)
+    N[3] = (1.0 - xi - eta) * (1.0 + zeta) / 2.0;
+    N[4] = xi * (1.0 + zeta) / 2.0;
+    N[5] = eta * (1.0 + zeta) / 2.0;
 
     double x_guess = 0.0, y_guess = 0.0, z_guess = 0.0;
     for (int i = 0; i < 6; ++i) {
@@ -88,13 +94,35 @@ void PrismCoordTran::global2Local(
     }
 
     double dN_local[6][3];
-    dN_local[0][0] =  (1.0 - zeta) / 2.0; dN_local[0][1] =  0.0;                dN_local[0][2] = -xi / 2.0;
-    dN_local[1][0] =  0.0;                dN_local[1][1] =  (1.0 - zeta) / 2.0; dN_local[1][2] = -eta / 2.0;
-    dN_local[2][0] = -(1.0 - zeta) / 2.0; dN_local[2][1] = -(1.0 - zeta) / 2.0; dN_local[2][2] = -(1.0 - xi - eta) / 2.0;
-    dN_local[3][0] =  (1.0 + zeta) / 2.0; dN_local[3][1] =  0.0;                dN_local[3][2] =  xi / 2.0;
-    dN_local[4][0] =  0.0;                dN_local[4][1] =  (1.0 + zeta) / 2.0; dN_local[4][2] =  eta / 2.0;
-    dN_local[5][0] = -(1.0 + zeta) / 2.0; dN_local[5][1] = -(1.0 + zeta) / 2.0; dN_local[5][2] =  (1.0 - xi - eta) / 2.0;
+    // 节点 0: (0, 0, -1)
+    dN_local[0][0] = -(1.0 - zeta) / 2.0;
+    dN_local[0][1] = -(1.0 - zeta) / 2.0;
+    dN_local[0][2] = -(1.0 - xi - eta) / 2.0;
 
+    // 节点 1: (1, 0, -1)
+    dN_local[1][0] =  (1.0 - zeta) / 2.0;
+    dN_local[1][1] =  0.0;
+    dN_local[1][2] = -xi / 2.0;
+
+    // 节点 2: (0, 1, -1)
+    dN_local[2][0] =  0.0;
+    dN_local[2][1] =  (1.0 - zeta) / 2.0;
+    dN_local[2][2] = -eta / 2.0;
+
+    // 节点 3: (0, 0, 1)
+    dN_local[3][0] = -(1.0 + zeta) / 2.0;
+    dN_local[3][1] = -(1.0 + zeta) / 2.0;
+    dN_local[3][2] =  (1.0 - xi - eta) / 2.0;
+
+    // 节点 4: (1, 0, 1)
+    dN_local[4][0] =  (1.0 + zeta) / 2.0;
+    dN_local[4][1] =  0.0;
+    dN_local[4][2] =  xi / 2.0;
+
+    // 节点 5: (0, 1, 1)
+    dN_local[5][0] =  0.0;
+    dN_local[5][1] =  (1.0 + zeta) / 2.0;
+    dN_local[5][2] =  eta / 2.0;
     double J[3][3] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
     for (int i = 0; i < 3; ++i) {
       for (int j = 0; j < 3; ++j) {
@@ -119,9 +147,9 @@ void PrismCoordTran::global2Local(
     invJ[2][1] = -(J[0][0]*J[2][1] - J[0][1]*J[2][0]) / detJ;
     invJ[2][2] =  (J[0][0]*J[1][1] - J[0][1]*J[1][0]) / detJ;
 
-    xi   -= (invJ[0][0]*Fx + invJ[0][1]*Fy + invJ[0][2]*Fz);
-    eta  -= (invJ[1][0]*Fx + invJ[1][1]*Fy + invJ[1][2]*Fz);
-    zeta -= (invJ[2][0]*Fx + invJ[2][1]*Fy + invJ[2][2]*Fz);
+    xi   -= (invJ[0][0]*Fx + invJ[1][0]*Fy + invJ[2][0]*Fz);
+    eta  -= (invJ[0][1]*Fx + invJ[1][1]*Fy + invJ[2][1]*Fz);
+    zeta -= (invJ[0][2]*Fx + invJ[1][2]*Fy + invJ[2][2]*Fz);
   }
 
   lp[0] = xi;
@@ -176,9 +204,9 @@ double PrismCoordTran::get_volume(const hier::DoubleVector<NDIM> &v0,
                                   const hier::DoubleVector<NDIM> &v2,
                                   const hier::DoubleVector<NDIM> &v3) {
   return ((v1[0] - v0[0]) * (v2[1] - v0[1]) * (v3[2] - v0[2]) +
-          (v1[1] - v0[1]) * (v2[2] - v0[2]) * (v3[0] - v0[0]) +
-          (v1[2] - v0[2]) * (v2[0] - v0[0]) * (v3[1] - v0[1]) -
-          (v1[0] - v0[0]) * (v2[2] - v0[2]) * (v3[1] - v0[1]) -
-          (v1[1] - v0[1]) * (v2[0] - v0[0]) * (v3[2] - v0[2]) -
-          (v1[2] - v0[2]) * (v2[1] - v0[1]) * (v3[0] - v0[0]));
+      (v1[1] - v0[1]) * (v2[2] - v0[2]) * (v3[0] - v0[0]) +
+      (v1[2] - v0[2]) * (v2[0] - v0[0]) * (v3[1] - v0[1]) -
+      (v1[0] - v0[0]) * (v2[2] - v0[2]) * (v3[1] - v0[1]) -
+      (v1[1] - v0[1]) * (v2[0] - v0[0]) * (v3[2] - v0[2]) -
+      (v1[2] - v0[2]) * (v2[1] - v0[1]) * (v3[0] - v0[0]));
 }

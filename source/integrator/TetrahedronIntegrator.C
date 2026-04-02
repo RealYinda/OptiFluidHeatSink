@@ -102,3 +102,8 @@ double TetrahedronIntegrator::getGlobal2LocalJacobian(
  * 获取结点数目.
  ****************************************************************************/
 int TetrahedronIntegrator::getNumberOfVertex() { return d_num_vertex; }
+
+/// 用在prism里
+tbox::Array<hier::DoubleVector<NDIM> > TetrahedronIntegrator::getLocalQuadraturePoints(){
+  return d_quad_info->getQuadraturePoints();
+}

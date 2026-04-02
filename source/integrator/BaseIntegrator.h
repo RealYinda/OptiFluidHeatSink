@@ -114,6 +114,9 @@ public:
    */
   virtual const string &getName();
 
+  /// 给prism用
+  virtual tbox::Array<hier::DoubleVector<NDIM> > getLocalQuadraturePoints() = 0;
+
 private:
   string d_object_name;
 };

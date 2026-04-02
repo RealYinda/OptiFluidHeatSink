@@ -62,6 +62,7 @@ PrismIntegrator::~PrismIntegrator() {}
  ****************************************************************************/
 /// 这里需要注意的是，我传给value和gradient的参数都是局部积分点信息
 /// !!!!!!!
+/// 如果没有特殊需求，在三棱柱单元里这个函数不太会用到
 tbox::Array<hier::DoubleVector<NDIM> >
 PrismIntegrator::getQuadraturePoints(
     tbox::Array<hier::DoubleVector<NDIM> > &real_vertex) {
@@ -116,3 +117,9 @@ double PrismIntegrator::getGlobal2LocalJacobian(
  * 获取结点数目.
  ****************************************************************************/
 int PrismIntegrator::getNumberOfVertex() { return d_num_vertex; }
+
+
+/// 用在prism里
+tbox::Array<hier::DoubleVector<NDIM> >PrismIntegrator::getLocalQuadraturePoints(){
+  return d_quad_info->getQuadraturePoints();
+}

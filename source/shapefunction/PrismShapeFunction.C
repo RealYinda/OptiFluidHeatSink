@@ -58,14 +58,15 @@ tbox::Array<double> PrismShapeFunction::value(
 
   // 代入张量积形函数公式 (极其高效的纯代数计算)
   // 底面节点 (zeta = -1)
-  tmp_val[0] = xi * (1.0 - zeta) / 2.0;
-  tmp_val[1] = eta * (1.0 - zeta) / 2.0;
-  tmp_val[2] = (1.0 - xi - eta) * (1.0 - zeta) / 2.0;
+  tmp_val[0] = (1.0 - xi - eta) * (1.0 - zeta) / 2.0;
+  tmp_val[1] = xi * (1.0 - zeta) / 2.0;
+  tmp_val[2] = eta * (1.0 - zeta) / 2.0;
 
   // 顶面节点 (zeta = 1)
-  tmp_val[3] = xi * (1.0 + zeta) / 2.0;
-  tmp_val[4] = eta * (1.0 + zeta) / 2.0;
-  tmp_val[5] = (1.0 - xi - eta) * (1.0 + zeta) / 2.0;
+  tmp_val[3] = (1.0 - xi - eta) * (1.0 + zeta) / 2.0;
+  tmp_val[4] = xi * (1.0 + zeta) / 2.0;
+  tmp_val[5] = eta * (1.0 + zeta) / 2.0;
+
 
   return tmp_val;
 }
@@ -125,29 +126,37 @@ tbox::Array<tbox::Array<double> > PrismShapeFunction::gradient(
   // 1. 计算对局部坐标 (xi, eta, zeta) 的偏导数
   double dN_local[6][3];
 
-  dN_local[0][0] =  (1.0 - zeta) / 2.0;
-  dN_local[0][1] =  0.0;
-  dN_local[0][2] = -xi / 2.0;
+  // dN_local[节点编号][xi, eta, zeta方向]
 
-  dN_local[1][0] =  0.0;
-  dN_local[1][1] =  (1.0 - zeta) / 2.0;
-  dN_local[1][2] = -eta / 2.0;
+  // 节点 0: (0, 0, -1)
+  dN_local[0][0] = -(1.0 - zeta) / 2.0;
+  dN_local[0][1] = -(1.0 - zeta) / 2.0;
+  dN_local[0][2] = -(1.0 - xi - eta) / 2.0;
 
-  dN_local[2][0] = -(1.0 - zeta) / 2.0;
-  dN_local[2][1] = -(1.0 - zeta) / 2.0;
-  dN_local[2][2] = -(1.0 - xi - eta) / 2.0;
+  // 节点 1: (1, 0, -1)
+  dN_local[1][0] =  (1.0 - zeta) / 2.0;
+  dN_local[1][1] =  0.0;
+  dN_local[1][2] = -xi / 2.0;
 
-  dN_local[3][0] =  (1.0 + zeta) / 2.0;
-  dN_local[3][1] =  0.0;
-  dN_local[3][2] =  xi / 2.0;
+  // 节点 2: (0, 1, -1)
+  dN_local[2][0] =  0.0;
+  dN_local[2][1] =  (1.0 - zeta) / 2.0;
+  dN_local[2][2] = -eta / 2.0;
 
-  dN_local[4][0] =  0.0;
-  dN_local[4][1] =  (1.0 + zeta) / 2.0;
-  dN_local[4][2] =  eta / 2.0;
+  // 节点 3: (0, 0, 1)
+  dN_local[3][0] = -(1.0 + zeta) / 2.0;
+  dN_local[3][1] = -(1.0 + zeta) / 2.0;
+  dN_local[3][2] =  (1.0 - xi - eta) / 2.0;
 
-  dN_local[5][0] = -(1.0 + zeta) / 2.0;
-  dN_local[5][1] = -(1.0 + zeta) / 2.0;
-  dN_local[5][2] =  (1.0 - xi - eta) / 2.0;
+  // 节点 4: (1, 0, 1)
+  dN_local[4][0] =  (1.0 + zeta) / 2.0;
+  dN_local[4][1] =  0.0;
+  dN_local[4][2] =  xi / 2.0;
+
+  // 节点 5: (0, 1, 1)
+  dN_local[5][0] =  0.0;
+  dN_local[5][1] =  (1.0 + zeta) / 2.0;
+  dN_local[5][2] =  eta / 2.0;
 
   // 2. 组装雅可比矩阵 J = dx_i / dxi_j
   double J[3][3] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
@@ -178,9 +187,9 @@ tbox::Array<tbox::Array<double> > PrismShapeFunction::gradient(
   // 4. 将局部偏导数通过雅可比逆矩阵映射到全局物理空间
   for (int i = 0; i < 6; ++i) {
     tmp_grad[i].resizeArray(3);
-    tmp_grad[i][0] = dN_local[i][0]*invJ[0][0] + dN_local[i][1]*invJ[1][0] + dN_local[i][2]*invJ[2][0];
-    tmp_grad[i][1] = dN_local[i][0]*invJ[0][1] + dN_local[i][1]*invJ[1][1] + dN_local[i][2]*invJ[2][1];
-    tmp_grad[i][2] = dN_local[i][0]*invJ[0][2] + dN_local[i][1]*invJ[1][2] + dN_local[i][2]*invJ[2][2];
+    tmp_grad[i][0] = dN_local[i][0]*invJ[0][0] + dN_local[i][1]*invJ[0][1] + dN_local[i][2]*invJ[0][2];
+    tmp_grad[i][1] = dN_local[i][0]*invJ[1][0] + dN_local[i][1]*invJ[1][1] + dN_local[i][2]*invJ[1][2];
+    tmp_grad[i][2] = dN_local[i][0]*invJ[2][0] + dN_local[i][1]*invJ[2][1] + dN_local[i][2]*invJ[2][2];
   }
 
   return tmp_grad;

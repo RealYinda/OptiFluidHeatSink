@@ -92,6 +92,8 @@ public:
    */
   virtual double getGlobal2LocalJacobian(
       tbox::Array<hier::DoubleVector<NDIM> > &real_vertex);
+  /// 用在prism里
+  virtual tbox::Array<hier::DoubleVector<NDIM> > getLocalQuadraturePoints() = 0;
 
   /**
    * @brief 获取单元结点数目。

@@ -58,6 +58,54 @@ void LinearPrism::buildStaticTh_ElementMatrix(
     tbox::Array<hier::DoubleVector<NDIM> > real_vertex, const double dt,
     const double time, tbox::Pointer<tbox::Matrix<double> > ele_mat, int entity_id, tbox::Array<double> T_val) {
   // TODO: 由用户实现稳态热传导矩阵
+  /// Done on 2026-04-01
+  /// 取出三棱柱积分器对象
+    tbox::Pointer<IntegratorManager<NDIM> > integrator_manager =
+        IntegratorManager<NDIM>::getManager();
+    tbox::Pointer<BaseIntegrator<NDIM> > integrator =
+        integrator_manager->getIntegrator("PrismIntegrator");
+
+    /// 取出三棱柱形函数对象
+    tbox::Pointer<ShapeFunctionManager<NDIM> > shape_manager =
+        ShapeFunctionManager<NDIM>::getManager();
+    tbox::Pointer<BaseShapeFunction<NDIM> > shape_func =
+        shape_manager->getShapeFunction("PrismShapeFunction");
+
+    /// 取出材料管理器
+    tbox::Pointer<MaterialManager<NDIM> > material_manager =
+        MaterialManager<NDIM>::getManager();
+
+    /// 计算单元平均温度 (注意：三棱柱有 6 个节点，所以除以 6.0)
+    double e_Temperature = 0;
+    for(int i = 0; i < 6; i++) {
+      e_Temperature += T_val[i] / 6.0;
+    }
+    tbox::Pointer<Material> material
+            = material_manager->getMaterial(GET_USER_MAT(entity_id));
+    /// 取出单元上自由度数目 (三棱柱这里 n_dof 会动态返回 6)
+    int n_dof = shape_func->getNumberOfDof();
+    ele_mat->resize(n_dof, n_dof);
+    for (int i = 0; i < n_dof; ++i) {
+      for (int j = 0; j < n_dof; ++j) {
+        (*ele_mat)(i, j) = 0.0;
+      }
+    }
+    /// 提取积分点、雅可比与体积等所有底层信息
+      int num_quad_pnts = integrator->getNumberOfQuadraturePoints();
+      double volume = integrator->getElementVolume();
+      /// 与四面体不同，这个地方只需要它的局部积分点信息
+      tbox::Array<hier::DoubleVector<NDIM> > local_quad_pnt =
+          integrator->getLocalQuadraturePoints();
+      double jac = integrator->getLocal2GlobalJacobian(real_vertex);
+      tbox::Array<double> weight = integrator->getQuadratureWeights();
+
+      /// 取出形函数在各个积分点的梯度值
+      tbox::Array<tbox::Array<tbox::Array<double> > > bas_grad =
+          shape_func->gradient(real_vertex, local_quad_pnt);
+
+      /// 根据平均温度获取当前材料的热导率 K
+      double K = material->getK(e_Temperature);
+
 }
 
 void LinearPrism::buildTh_ElementRHS(

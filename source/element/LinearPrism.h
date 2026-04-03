@@ -115,6 +115,14 @@ public:
      * @brief 获取单元上每一个网格实体上自由度的数目.
      */
   tbox::Array<int> getNumberOfDofOnEntity();
+/// 私有类，用于三棱柱单元的计算
+private:
+  /**
+     * @brief 计算三棱柱在某一个局部等参点上的动态雅可比行列式 |detJ|
+     */
+  double calcDynamicDetJ(
+      const tbox::Array<hier::DoubleVector<NDIM> >& real_vertex,
+      const hier::DoubleVector<NDIM>& local_pnt);
 
 };
 

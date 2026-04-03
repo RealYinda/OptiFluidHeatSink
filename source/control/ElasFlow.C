@@ -220,12 +220,10 @@ int ElasFlow::advanceLevel(
   const tbox::Pointer<hier::PatchLevel<NDIM> > patch_level = level;
 
   actual_dt = predict_dt;
-
-  /// 为矩阵向量开辟内存
-  d_alloc_data->allocatePatchData(patch_level, current_time + predict_dt);
   /// 获取参数
   tbox::Pointer<PatchStrategy> p_strategy = d_patch_strategy;
 
+#if FLUID_COMPUTATION
   if (step_number == 0){
     /// ========================================================
     /// “初始猜测值”
@@ -276,16 +274,24 @@ int ElasFlow::advanceLevel(
     double delta_L2Norm = J_F_delta_vec->l2Norm();
     current_error = delta_L2Norm/(sol_L2Norm+1e-15);
     tbox::pout << "    Iter: " << iter
-                   << " | Delta Norm: " << delta_L2Norm
-                   << " | Rel Error: " << current_error << endl;
+               << " | Delta Norm: " << delta_L2Norm
+               << " | Rel Error: " << current_error << endl;
+    d_alloc_fluid_data->deallocatePatchData(patch_level);
 
   }
+#endif
+
+  /// 为矩阵向量开辟内存
+  d_alloc_data->allocatePatchData(patch_level, current_time + predict_dt);
+
+
+
   tbox::pout << "**************************";
   tbox::pout << "电场方程求解中";
   tbox::pout << "**************************"<<endl;
   t_fem_solve->start();
   double max[3]={0,0,0};
-#if 0
+#if ELECTRIC_COMPUTATION
   ///////////////////////////////////////////////////////////////////////////////////////////
   //update #9 电计算
   E_num_intc_mat->computing(patch_level, current_time, actual_dt);
@@ -312,7 +318,7 @@ int ElasFlow::advanceLevel(
 #endif
   /////////////////////////////////////////////////////////////////////////////////////////////
 
-#if 0
+#if THERMAL_COMPUTATION
   ///////////////////////////////////////////////////////////////////////////////////////////
   tbox::pout<<"热传导方程求解中...... "<<endl;
 
@@ -349,7 +355,7 @@ int ElasFlow::advanceLevel(
   }
   #endif
   /////////////////////////////////////////////////////////////////////////////////////////////
-  #if 0
+  #if ELASTIC_COMPUTATION
   //计时开始函数
   t_fem_build_matrix->start();
   tbox::pout<<"Compute Cauchy momentum equations...... "<<endl;
@@ -406,10 +412,10 @@ int ElasFlow::advanceLevel(
   }
 
   #endif
-
+  d_alloc_data->deallocatePatchData(patch_level);
 
   actual_dt = predict_dt;
-  d_alloc_data->deallocatePatchData(patch_level);
+
 
   return (0);
 }

@@ -1,0 +1,28 @@
+%模型输入文件
+%scale为模型尺寸单位代表的数值，默认为m，数值为1；cm:0.01 um:0.001等等
+%用户指定输入文件和输出文件，默认目录为当前目录
+%Boundary1 Boundary2 ... Boundaryn:表示边界条件1 2 ... n，其下面一行的数值为此类边界条件包含的边界（面）数，n最大为20
+%Boundary1_arr Boundary2_arr ... Boundaryn_arr:表示第类边界上的节点数组名，其下一行开始的数据表示节点的编号，一行4个，不足4个用0补足
+%BoundaryNum：边界条件数
+% %：此符号为注释一整行
+#scale
+1e-6
+#in_filename
+mesh.mphtxt
+#out_filename
+mesh.k
+#BoundaryNum
+2
+#Boudary_Imformation
+#Boundary1
+1
+#Boundary1_arr
+1 0 0 0
+#Boundary2
+1
+#Boundary2_arr
+11 0 0 0
+
+
+
+

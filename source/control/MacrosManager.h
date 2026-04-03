@@ -56,6 +56,11 @@ struct NewmarkData
 
 #define THERMAL_SOURCE 0
 
+#define ELECTRIC_COMPUTATION 0
+#define THERMAL_COMPUTATION 1
+#define ELASTIC_COMPUTATION 0
+#define FLUID_COMPUTATION 0
+
 // @  update #6 2017-05-02
 // @  used by:LinearTet.h(.cpp), PatchStrategy.h(.cpp)
 // @  功能：Newmark-beta方法中的beta值

@@ -93,7 +93,7 @@ public:
   virtual int getNumberOfVertex();
 
   /// 用在prism里
-  virtual tbox::Array<hier::DoubleVector<NDIM> > getLocalQuadraturePoints() = 0;
+  virtual tbox::Array<hier::DoubleVector<NDIM> > getLocalQuadraturePoints();
 
 private:
   tbox::Pointer<PrismCoordTran> d_coord_transform; /**< 坐标变换 */

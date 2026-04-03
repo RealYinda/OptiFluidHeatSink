@@ -714,7 +714,7 @@ void PatchStrategy::InitDOFsComponent(hier::Patch<NDIM>& patch){
     for(int loc_nn = 0; loc_nn < 4; loc_nn ++){
       int glo_nn = cell_node_idx[cell_node_ext[cc]+loc_nn];
       if(material_mark > 100){
-        F_dis_ptr[glo_nn] = 4;
+        F_dis_ptr[glo_nn] = cell_node_ext[cc+1]-cell_node_ext[cc];
       }
       else{
         M_dis_ptr[glo_nn] = 1;
@@ -741,7 +741,8 @@ void PatchStrategy::InitBoundaryComponent(hier::Patch<NDIM>& patch){
 
   /// 首先初始化全为0
   for(int ff = 0; ff <num_faces; ff++){
-    for(int nn = 0; nn < NDIM; nn ++){
+    int face_node_num = face_node_ext[ff+1]-face_node_ext[ff];
+    for(int nn = 0; nn < face_node_num; nn ++){
       int glo_nn = face_node_idx[face_node_ext[ff]+nn];
       (*fluid_boundary)(0,glo_nn) = 0;
     }
@@ -752,7 +753,8 @@ void PatchStrategy::InitBoundaryComponent(hier::Patch<NDIM>& patch){
                          inlet_velocity_mark_id[face_idx], FACE, 1);
       for(int ff = 0; ff < all_face_velocity.getSize();ff ++){
         int this_face = all_face_velocity[ff];
-        for(int nn = 0; nn < NDIM; nn ++){
+        int face_node_num = face_node_ext[ff+1]-face_node_ext[ff];
+        for(int nn = 0; nn < face_node_num; nn ++){
           int glo_nn = face_node_idx[face_node_ext[this_face]+nn];
           /// 流速边界
           (*fluid_boundary)(0,glo_nn) = 1;
@@ -768,7 +770,8 @@ void PatchStrategy::InitBoundaryComponent(hier::Patch<NDIM>& patch){
                          wall_velocity_mark_id[face_idx], FACE, 1);
       for(int ff = 0; ff < all_face_velocity.getSize();ff ++){
         int this_face = all_face_velocity[ff];
-        for(int nn = 0; nn < NDIM; nn ++){
+        int face_node_num = face_node_ext[ff+1]-face_node_ext[ff];
+        for(int nn = 0; nn < face_node_num; nn ++){
           int glo_nn = face_node_idx[face_node_ext[this_face]+nn];
           /// 壁边界
           (*fluid_boundary)(0,glo_nn) = 2;

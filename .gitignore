@@ -1,4 +1,4 @@
-mphtxt2k/
+mphtxt2k
 build*
 Sort/SortTool
 .vscode/
@@ -8,3 +8,4 @@ CMakeLists.txt.user
 *.dat
 run_simulation
 results
+

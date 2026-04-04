@@ -6,13 +6,13 @@
 %BoundaryNum：边界条件数
 % %：此符号为注释一整行
 #scale
-1e-6
+1e-3
 #in_filename
-mesh.mphtxt
+Prism_chiplet.mphtxt
 #out_filename
-mesh.k
+Prism_chiplet.k
 #BoundaryNum
-2
+0
 #Boudary_Imformation
 #Boundary1
 1

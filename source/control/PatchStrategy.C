@@ -342,7 +342,7 @@ void PatchStrategy::registerModelVariable() {
   /// 压力场的变量声明
   DECLARE_VARIABLE(pressure_plot,Node,double,1,1);
   /// 狄利克雷边界的声明
-  DECLARE_VARIABLE(fluid_boundary,Node,double,1,1);
+  DECLARE_VARIABLE(fluid_boundary,Node,int,1,1);
 
   REGISTER_VARIABLE(F_vel_plot_id,velocity_plot,current,1);
   REGISTER_VARIABLE(F_pre_plot_id,pressure_plot,current,1);
@@ -527,11 +527,13 @@ void PatchStrategy::InitStressRecoveryComponent(hier::Patch<NDIM>& patch){
   JAUMIN::appu::TetGeom tetrahedron(patch);
   GET_PATCH_DATA(patch,volume,d_Cell_volume_id,Cell,double);
   GET_PATCH_DATA(patch,jacobian,d_Cell_jacobian_id,Cell,double);
-  GET_PATCH_DATA(patch,is_on_bnd,d_contained_domain_id,Cell,double);
+  GET_PATCH_DATA(patch,is_on_bnd,d_contained_domain_id,Cell,int);
   DECLARE_ADJACENCY(patch,cell,cell,Cell,Cell);
+  DECLARE_ADJACENCY(patch,cell,node,Cell,Node);
 
   // 初始化tool domain信息
       for(int cc = 0; cc < num_local_cells; cc++){
+        if(cell_node_ext[cc+1]-cell_node_ext[cc]>NDIM+1) continue;
         (*volume)(0, cc) = tetrahedron.volume(cc);
         tetrahedron.jacobian(cc, &((*jacobian)(0, cc)));
         bool is_computed = false;
@@ -695,18 +697,19 @@ void PatchStrategy::InitMaterialComponent(hier::Patch<NDIM>& patch){
  * DOF初始化模块的功能
  */
 void PatchStrategy::InitDOFsComponent(hier::Patch<NDIM>& patch){
+  /// 所有自由度的初始化必须写分开！
   GET_PATCH_DATA(patch, materialid_data, material_num_id, Cell, int);
   DECLARE_ADJACENCY(patch,cell,node,Cell,Node);
   int num_nodes = patch.getNumberOfNodes(1);
   int num_cells = patch.getNumberOfCells(1);
   int* M_dis_ptr = M_dof_info->getDOFDistribution(patch);
   int* T_dis_ptr = T_dof_info->getDOFDistribution(patch);
-  int* F_dis_ptr = F_dof_info->getDOFDistribution(patch);
+//  int* F_dis_ptr = F_dof_info->getDOFDistribution(patch);
   for(int nn = 0; nn < num_nodes; nn++){
     /// 首先将其自由度全部设置为0
     M_dis_ptr[nn] = 0;
     T_dis_ptr[nn] = 1;
-    F_dis_ptr[nn] = 0;
+//    F_dis_ptr[nn] = 0;
   }
   for(int cc = 0; cc < num_cells; cc++){
     int material_mark = (*materialid_data)(0,cc);
@@ -714,7 +717,7 @@ void PatchStrategy::InitDOFsComponent(hier::Patch<NDIM>& patch){
     for(int loc_nn = 0; loc_nn < 4; loc_nn ++){
       int glo_nn = cell_node_idx[cell_node_ext[cc]+loc_nn];
       if(material_mark > 100){
-        F_dis_ptr[glo_nn] = cell_node_ext[cc+1]-cell_node_ext[cc];
+//        F_dis_ptr[glo_nn] = cell_node_ext[cc+1]-cell_node_ext[cc];
       }
       else{
         M_dis_ptr[glo_nn] = 1;
@@ -724,7 +727,7 @@ void PatchStrategy::InitDOFsComponent(hier::Patch<NDIM>& patch){
   /// 建立映射
   M_dof_info->buildPatchDOFMapping(patch);
   T_dof_info->buildPatchDOFMapping(patch);
-  F_dof_info->buildPatchDOFMapping(patch);
+//  F_dof_info->buildPatchDOFMapping(patch);
 
 
 }
@@ -2622,33 +2625,8 @@ void PatchStrategy::applyTh_Constraint(hier::Patch<NDIM>& patch,
   tbox::Pointer<pdat::NodeData<NDIM, double> > node_coord =
       patch_geo->getNodeCoordinates();
 
-
-#if 0
-  /// 边界条件处理.
-  if (patch_geo->hasEntitySet(2, hier::EntityUtilities::NODE)) {
-    // 获取指定编号和类型的集合包含的网格实体的索引。
-    const tbox::Array<int>& entity_idx = patch_geo->getEntityIndicesInSet(
-          2, hier::EntityUtilities::NODE, num_nodes);
-    int size = entity_idx.getSize();
-    /// 对角化 1 法处理约束。
-    for (int i = 0; i < size; ++i) {
-      int index = dof_map[entity_idx[i]];
-      vec_val[index] =300.0; /**< 载荷项设为 0 */
-      for (int j = row_start[index]; j < row_start[index + 1]; ++j) {
-        if (col_idx[j] == index) {
-          mat_val[j] = 1.0; /**< 对角线元素 */
-        } else {
-          mat_val[j] = 0.0;                     /**< 非对角线元素 */
-          vec_val[col_idx[j]] = vec_val[col_idx[j]] - (*mat_data)(col_idx[j], index)*vec_val[index];
-          (*mat_data)(col_idx[j], index) = 0.0; /**< 对应的列元素 */
-        }
-      }
-    }
-  }
-#endif
-  //  cout<<"constrain ok"<<endl;
   for (int conv_id = 0; conv_id < d_convection_boundary.size(); conv_id++){
-    double conv_coef = 10.;
+    double conv_coef = 20.;
     double Text = 293.15;
     if (patch_geo->hasEntitySet(d_convection_boundary[conv_id],
                                 hier::EntityUtilities::FACE,patch.getNumberOfFaces(1))){
@@ -2658,38 +2636,77 @@ void PatchStrategy::applyTh_Constraint(hier::Patch<NDIM>& patch,
             hier::EntityUtilities::FACE, num_faces);
       int size = Face_idx.getSize();
       for (int face=0; face<size;face++){
-        int node_id[3]={0,0,0};
-        int n=3;
-        double b[3]={0,0,0};
-        double k[3][3]={{0,0,0},{0,0,0},{0,0,0}};
-        //面上三角形的三个顶点编号
-        node_id[0]=face_node_idx[face_node_ext[Face_idx[face]]];//Face_idx[face]面的编号
-        node_id[1]=face_node_idx[face_node_ext[Face_idx[face]]+1];
-        node_id[2]=face_node_idx[face_node_ext[Face_idx[face]]+2];
-        tbox::Array<hier::DoubleVector<NDIM> > vertex(n);
-        for (int k=0; k<n;k++){
-          for(int j=0; j<n;j++){
-            vertex[k][j]=(*node_coord)(j,node_id[k]);
+        int face_node = face_node_ext[Face_idx[face]+1]-face_node_ext[Face_idx[face]];
+        double b[face_node];
+        double k[face_node][face_node];
+        int node_id[face_node];
+        if(face_node == 3){
+          //面上三角形的三个顶点编号
+          node_id[0]=face_node_idx[face_node_ext[Face_idx[face]]];//Face_idx[face]面的编号
+          node_id[1]=face_node_idx[face_node_ext[Face_idx[face]]+1];
+          node_id[2]=face_node_idx[face_node_ext[Face_idx[face]]+2];
+          tbox::Array<hier::DoubleVector<NDIM> > vertex(face_node);
+          for (int k=0; k<face_node;k++){
+            for(int j=0; j<face_node;j++){
+              vertex[k][j]=(*node_coord)(j,node_id[k]);
+            }
           }
-        }
-        double area = sqrt(AREA(vertex[0], vertex[1], vertex[2]))
-            / 2.0;
-        for (int i = 0; i < 3; i++) {
-          b[i] =  conv_coef * (Text) * area / 3.0;
-          for (int j = 0; j < 3; j++) {
-            if (i == j)
-              k[i][j] =  conv_coef * area / 6.0;
-            else
-              k[i][j] =  conv_coef * area / 12.0;
+          double area = sqrt(AREA(vertex[0], vertex[1], vertex[2]))
+              / 2.0;
+          for (int i = 0; i < face_node; i++) {
+            b[i] =  conv_coef * (Text) * area / 3.0;
+            for (int j = 0; j < face_node; j++) {
+              if (i == j)
+                k[i][j] =  conv_coef * area / 6.0;
+              else
+                k[i][j] =  conv_coef * area / 12.0;
+            }
+
           }
 
-        }
-        for (int i = 0; i < 3; i++) {
+
+        } /// 四面体到此结束
+        else if(face_node == 4){
+          double b[4]={0,0,0,0};
+          double k[4][4]={{0,0,0,0},{0,0,0,0},{0,0,0,0},{0,0,0,0}};
+          //面上四边形的四个顶点编号
+          node_id[0]=face_node_idx[face_node_ext[Face_idx[face]]];//Face_idx[face]面的编号
+          node_id[1]=face_node_idx[face_node_ext[Face_idx[face]]+1];
+          node_id[2]=face_node_idx[face_node_ext[Face_idx[face]]+2];
+          node_id[3]=face_node_idx[face_node_ext[Face_idx[face]]+3];
+          tbox::Array<hier::DoubleVector<NDIM> > vertex(face_node);
+          for (int k=0; k<face_node;k++){
+            for(int j=0; j<face_node;j++){
+              vertex[k][j]=(*node_coord)(j,node_id[k]);
+            }
+          }
+          double area1 = sqrt(AREA(vertex[0], vertex[1], vertex[2])) / 2.0;
+          double area2 = sqrt(AREA(vertex[0], vertex[2], vertex[3])) / 2.0;
+          double area = area1 + area2;
+          for (int i = 0; i < face_node; i++) {
+            b[i] =  conv_coef * (Text) * area / 4.0;
+            for (int j = 0; j < face_node; j++) {
+              if (i == j) {
+                // 对角线 (自身)
+                k[i][j] = conv_coef * area * 4.0 / 36.0;
+              } else if (std::abs(i - j) == 2) {
+                // 对角节点 (0和2, 或1和3)
+                k[i][j] = conv_coef * area * 1.0 / 36.0;
+              } else {
+                // 相邻节点 (如0和1, 1和2)
+                k[i][j] = conv_coef * area * 2.0 / 36.0;
+              }
+            }
+
+          }
+
+        }/// endof node4
+        for (int i = 0; i < face_node; i++) {
           if(d_is_time_domain_solve)
             vec_data->addVectorValue(dof_map[node_id[i]], b[i]*dt);
           else
             vec_data->addVectorValue(dof_map[node_id[i]], b[i]);
-          for (int j = 0; j < 3; j++) {
+          for (int j = 0; j < face_node; j++) {
             if(d_is_time_domain_solve)
               mat_data->addMatrixValue(dof_map[node_id[i]], dof_map[node_id[j]],  k[i][j]*dt);
             else
@@ -2698,6 +2715,7 @@ void PatchStrategy::applyTh_Constraint(hier::Patch<NDIM>& patch,
           }
 
         }
+
       }
 
     }
@@ -2804,35 +2822,12 @@ void PatchStrategy::buildTh_RHSOnPatch(hier::Patch<NDIM>& patch,
     //update #9
     tbox::Pointer<MaterialManager<NDIM> > material_manager =
         MaterialManager<NDIM>::getManager();
-    tbox::Pointer<Material> material =
-        material_manager->getMaterial("Gold");
-
-    if((*materialid_data)(0,i)==1)
-      material =	material_manager->getMaterial("Silicon");
-    else if((*materialid_data)(0,i)==13)
-      material =	material_manager->getMaterial("MoCu");
-    else if((*materialid_data)(0,i)==2)
-      material =	material_manager->getMaterial("Copper");
-    else if((*materialid_data)(0,i)==4)
-      material =	material_manager->getMaterial("SiO2");
-    else if((*materialid_data)(0,i)==5)
-      material =	material_manager->getMaterial("SiN");
-    else if((*materialid_data)(0,i)==3)
-      material =	material_manager->getMaterial("Gold");
-    else if((*materialid_data)(0,i)==15)
-      material =	material_manager->getMaterial("GaN");
-    else if((*materialid_data)(0,i)==16)
-      material =	material_manager->getMaterial("Al2O3");
-    else if((*materialid_data)(0,i)==17)
-      material =	material_manager->getMaterial("Alloy");
-    else if((*materialid_data)(0,i)==6)
-      material =	material_manager->getMaterial("Aluminum");
-    else
-      material =	material_manager->getMaterial("Gold");
+    tbox::Pointer<Material> material
+        = material_manager->getMaterial(GET_USER_MAT((*materialid_data)(0,cell)));
 
     double temp_T=0;
-    for(int t=0;t<4;t++)
-    {temp_T+=T_val[t]/4;}
+    for(int t=0;t<n_vertex;t++)
+    {temp_T+=T_val[t]/n_vertex;}
     double Sigma=material->getSigma(temp_T);
 
     //暂时没有添加电求解
@@ -2841,8 +2836,8 @@ void PatchStrategy::buildTh_RHSOnPatch(hier::Patch<NDIM>& patch,
     double u_val=((*Emag_data)(0,cell))*Sigma;
     //#endif
     double e_ThermalSource=u_val;//系统单元热源
-    double q=10000;//50e8/0.6438;//30e9/1.033;;//10e9/2.5;//q=5e12/2.929;//单位体积热源
-//    if((*entityid_data)(0,cell)==2||(*entityid_data)(0,i)==3)
+    double q=1e7;//50e8/0.6438;//30e9/1.033;;//10e9/2.5;//q=5e12/2.929;//单位体积热源
+    if(GET_USER_MAT((*materialid_data)(0,cell))=="Silicon")
 
       e_ThermalSource=e_ThermalSource+q;
 
@@ -2850,6 +2845,14 @@ void PatchStrategy::buildTh_RHSOnPatch(hier::Patch<NDIM>& patch,
     /// 取出单元对象.
     tbox::Pointer<BaseElement<NDIM> > ele =
         d_element_manager->getElement(d_element_type[0]);
+    /// 取出单元对象.
+    /// 注意！这里添加了三棱柱单元，它的type是第二个
+    if(n_vertex == 4)
+      ele = d_element_manager->getElement("LinearTetrahedron");
+    else if(n_vertex == 6)
+      ele = d_element_manager->getElement("LinearPrism");
+    else
+      TBOX_ERROR("Elementary nodes with number \"" << n_vertex << "\" not matched.\n");
 
     /// 声明vec，用来存储单元右端项。
     tbox::Pointer<tbox::Vector<double> > ele_vec = new tbox::Vector<double>();
@@ -2933,8 +2936,16 @@ void PatchStrategy::buildTh_MatrixOnPatch(hier::Patch<NDIM>& patch,
     }
 
     /// 取出单元对象.
+    /// 注意！这里添加了三棱柱单元，它的type是第二个
+    /// 默认为四面体单元组装
     tbox::Pointer<BaseElement<NDIM> > ele =
         d_element_manager->getElement(d_element_type[0]);
+    if(n_vertex == 4)
+      ele = d_element_manager->getElement("LinearTetrahedron");
+    else if(n_vertex == 6)
+      ele = d_element_manager->getElement("LinearPrism");
+    else
+      TBOX_ERROR("Elementary nodes with number \"" << n_vertex << "\" not matched.\n");
 
     /// 计算单元矩阵,区分稳态和瞬态
     if(d_is_time_domain_solve)
@@ -2951,6 +2962,7 @@ void PatchStrategy::buildTh_MatrixOnPatch(hier::Patch<NDIM>& patch,
         mat_data->addMatrixValue(row, col, (*ele_mat)(i, j));
       }
     }
+
   }
 
 }

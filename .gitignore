@@ -5,6 +5,7 @@ Sort/SortTool
 !buildApplicationLib.h
 CMakeLists.txt.user
 *.k
+*.mphtxt
 *.dat
 run_simulation
 results

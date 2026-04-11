@@ -248,6 +248,7 @@ int ElasFlow::advanceLevel(
   /// ========================================================
   /// Newton-Raphson iterations
   /// ========================================================
+  #if NEWTON_RAPHSON
   int max_newton_iter = 20;
   double current_error = 1.0;
   int iter = 0;
@@ -279,6 +280,7 @@ int ElasFlow::advanceLevel(
     d_alloc_fluid_data->deallocatePatchData(patch_level);
 
   }
+  #endif
 #endif
 
   /// 为矩阵向量开辟内存
@@ -391,6 +393,7 @@ int ElasFlow::advanceLevel(
   d_num_intc_displacement->computing(patch_level, current_time, actual_dt,false);
   /// 调用数值构件接口函数, 计算应力.
   d_num_intc_stress->computing(patch_level, current_time, actual_dt, false);
+  #if 0
   tbox::pout<<"recovery "<<endl;
   t_fem_post->start();
   d_num_intc_recovery->computing(patch_level, current_time, actual_dt, false);
@@ -400,6 +403,7 @@ int ElasFlow::advanceLevel(
   tbox::pout<<"dataexplorer "<<endl;
   if(1)
     d_num_intc_data_explorer->computing(patch_level, current_time, actual_dt, false);
+  #endif
   d_Max_Stress_intc->reduction(&max[1], 2, patch_level, current_time, actual_dt);
   if (tbox::MPI::getRank() == 0){
     ofstream outSdata;

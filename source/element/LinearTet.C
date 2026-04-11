@@ -648,8 +648,8 @@ void LinearTet::buildElementRHS(
   //计算热应变
   //应变矩阵=th_stress[1 1 1 0 0 0]
   double alpha=material->getAlpha(e_Temperature);
-  //  double th_stress=alpha*(e_Temperature-293.15);
-  double th_stress=alpha*(e_Temperature-650.);
+  double th_stress=alpha*(e_Temperature-293.15);
+  //  double th_stress=alpha*(e_Temperature-650.);
   //取出积分点处基函数梯度值
   tbox::Array<tbox::Array<tbox::Array<double> > > bas_grad =
       shape_func->gradient(real_vertex, quad_pnt);
@@ -1424,102 +1424,105 @@ void LinearTet::buildInitFluidElementMatrix(
     tbox::Pointer<Material> material
         = material_manager->getMaterial(GET_USER_MAT(entity_id));
     /// 4. 单元与积分信息
-      int n_nodes = shape_func->getNumberOfDof(); // 对于线性四面体，节点数为 4
-      int n_dof_total = n_nodes * (NDIM + 1);     // 流体单元总自由度: 4 * (3 + 1) = 16
+    int n_nodes = shape_func->getNumberOfDof(); // 对于线性四面体，节点数为 4
+    int n_dof_total = n_nodes * (NDIM + 1);     // 流体单元总自由度: 4 * (3 + 1) = 16
 
-      ele_mat->resize(n_dof_total, n_dof_total);
-      for (int i = 0; i < n_dof_total; ++i) {
-        for (int j = 0; j < n_dof_total; ++j) {
-          (*ele_mat)(i, j) = 0.0;
-        }
+    ele_mat->resize(n_dof_total, n_dof_total);
+    for (int i = 0; i < n_dof_total; ++i) {
+      for (int j = 0; j < n_dof_total; ++j) {
+        (*ele_mat)(i, j) = 0.0;
       }
-      double mu_value = (*mu);
+    }
+    double mu_value = (*mu);
 
-      int num_quad_pnts = integrator->getNumberOfQuadraturePoints();
-      double volume = integrator->getElementVolume();
-      double jac = integrator->getLocal2GlobalJacobian(real_vertex);
+    int num_quad_pnts = integrator->getNumberOfQuadraturePoints();
+    double volume = integrator->getElementVolume();
+    double jac = integrator->getLocal2GlobalJacobian(real_vertex);
 
-      tbox::Array<hier::DoubleVector<NDIM> > quad_pnt =
-          integrator->getQuadraturePoints(real_vertex);
-      tbox::Array<double> weight = integrator->getQuadratureWeights();
-      tbox::Array<tbox::Array<tbox::Array<double> > > bas_grad =
-          shape_func->gradient(real_vertex, quad_pnt);
-      tbox::Array<tbox::Array<double> > bas_val =
-          shape_func->value(real_vertex, quad_pnt);
-      /// 计算 PSPG 稳定化参数 tau
-      /// 特征长度 h_e 粗略估计为体积的立方根
-      double h_e = pow(volume, 1.0 / 3.0);
-      double tau_pspg = (h_e * h_e) / (12.0 * mu_value); // 经典的 Stokes 稳定化时间尺度
-      for (int i = 0; i < n_nodes; ++i) {
-        for (int j = 0; j < n_nodes; ++j) {
-          // 预先计算出局部块的行列索引，体现节点交替 [u, v, w, p]
-          int row_u = i * (NDIM + 1) + 0;
-          int row_v = i * (NDIM + 1) + 1;
-          int row_w = i * (NDIM + 1) + 2;
-          int row_p = i * (NDIM + 1) + 3;
+    tbox::Array<hier::DoubleVector<NDIM> > quad_pnt =
+        integrator->getQuadraturePoints(real_vertex);
+    tbox::Array<double> weight = integrator->getQuadratureWeights();
+    tbox::Array<tbox::Array<tbox::Array<double> > > bas_grad =
+        shape_func->gradient(real_vertex, quad_pnt);
+    tbox::Array<tbox::Array<double> > bas_val =
+        shape_func->value(real_vertex, quad_pnt);
+    /// 计算 PSPG 稳定化参数 tau
+    /// 正确计算单元的真实物理体积
+    double real_volume = volume * jac;
+    /// 特征长度 h_e 粗略估计为体积的立方根
+    double h_e = pow(real_volume, 1.0 / 3.0);
 
-          int col_u = j * (NDIM + 1) + 0;
-          int col_v = j * (NDIM + 1) + 1;
-          int col_w = j * (NDIM + 1) + 2;
-          int col_p = j * (NDIM + 1) + 3;
+    double tau_pspg = (h_e * h_e) / (12.0 * mu_value); // 经典的 Stokes 稳定化时间尺度
+    for (int i = 0; i < n_nodes; ++i) {
+      for (int j = 0; j < n_nodes; ++j) {
+        // 预先计算出局部块的行列索引，体现节点交替 [u, v, w, p]
+        int row_u = i * (NDIM + 1) + 0;
+        int row_v = i * (NDIM + 1) + 1;
+        int row_w = i * (NDIM + 1) + 2;
+        int row_p = i * (NDIM + 1) + 3;
 
-          for (int l = 0; l < num_quad_pnts; ++l) {
-            double JxW = volume * jac * weight[l];
+        int col_u = j * (NDIM + 1) + 0;
+        int col_v = j * (NDIM + 1) + 1;
+        int col_w = j * (NDIM + 1) + 2;
+        int col_p = j * (NDIM + 1) + 3;
 
-            /** ----------------------------------------------------
+        for (int l = 0; l < num_quad_pnts; ++l) {
+          double JxW = volume * jac * weight[l];
+
+          /** ----------------------------------------------------
             粘性扩散矩阵 K_mu: mu * \int (\nabla N_i \cdot \nabla N_j)
             ----------------------------------------------------**/
-            double diff = JxW * mu_value * (bas_grad[l][i][0] * bas_grad[l][j][0] +
-                bas_grad[l][i][1] * bas_grad[l][j][1] +
-                bas_grad[l][i][2] * bas_grad[l][j][2]);
+          double diff = JxW * mu_value * (bas_grad[l][i][0] * bas_grad[l][j][0] +
+              bas_grad[l][i][1] * bas_grad[l][j][1] +
+              bas_grad[l][i][2] * bas_grad[l][j][2]);
 
-            // ----------------------------------------------------
-            // B. 压力梯度矩阵 G: - \int (\nabla \cdot v_i) * P_j
-            // ----------------------------------------------------
-            double G_x = -JxW * bas_grad[l][i][0] * bas_val[l][j];
-            double G_y = -JxW * bas_grad[l][i][1] * bas_val[l][j];
-            double G_z = -JxW * bas_grad[l][i][2] * bas_val[l][j];
+          // ----------------------------------------------------
+          // B. 压力梯度矩阵 G: - \int (\nabla \cdot v_i) * P_j
+          // ----------------------------------------------------
+          double G_x = -JxW * bas_grad[l][i][0] * bas_val[l][j];
+          double G_y = -JxW * bas_grad[l][i][1] * bas_val[l][j];
+          double G_z = -JxW * bas_grad[l][i][2] * bas_val[l][j];
 
-            // ----------------------------------------------------
-            // C. 散度约束矩阵 D (乘以-1凑成对称鞍点系统: D = G^T)
-            // 原本是 \int q_i * (\nabla \cdot u_j)，乘以-1后与 G_x 完全对称
-            // ----------------------------------------------------
-            double D_x = -JxW * bas_val[l][i] * bas_grad[l][j][0];
-            double D_y = -JxW * bas_val[l][i] * bas_grad[l][j][1];
-            double D_z = -JxW * bas_val[l][i] * bas_grad[l][j][2];
+          // ----------------------------------------------------
+          // C. 散度约束矩阵 D (乘以-1凑成对称鞍点系统: D = G^T)
+          // 原本是 \int q_i * (\nabla \cdot u_j)，乘以-1后与 G_x 完全对称
+          // ----------------------------------------------------
+          double D_x = -JxW * bas_val[l][i] * bas_grad[l][j][0];
+          double D_y = -JxW * bas_val[l][i] * bas_grad[l][j][1];
+          double D_z = -JxW * bas_val[l][i] * bas_grad[l][j][2];
 
-            // ----------------------------------------------------
-            // D. PSPG 稳定化矩阵 K_pspg: \int tau * (\nabla q_i \cdot \nabla p_j)
-            // 注意：因为连续性方程乘了-1，这里也必须乘-1，变成 -tau * ...
-            // ----------------------------------------------------
-            double pspg = -JxW * tau_pspg * (bas_grad[l][i][0] * bas_grad[l][j][0] +
-                bas_grad[l][i][1] * bas_grad[l][j][1] +
-                bas_grad[l][i][2] * bas_grad[l][j][2]);
+          // ----------------------------------------------------
+          // D. PSPG 稳定化矩阵 K_pspg: \int tau * (\nabla q_i \cdot \nabla p_j)
+          // 注意：因为连续性方程乘了-1，这里也必须乘-1，变成 -tau * ...
+          // ----------------------------------------------------
+          double pspg = -JxW * tau_pspg * (bas_grad[l][i][0] * bas_grad[l][j][0] +
+              bas_grad[l][i][1] * bas_grad[l][j][1] +
+              bas_grad[l][i][2] * bas_grad[l][j][2]);
 
-            // ----------------------------------------------------
-            // 组装到 16x16 的局部矩阵中 (NDIM=3 时)
-            // ----------------------------------------------------
+          // ----------------------------------------------------
+          // 组装到 16x16 的局部矩阵中 (NDIM=3 时)
+          // ----------------------------------------------------
 
-            // 1. K_mu (对角线上的速度-速度耦合)
-            (*ele_mat)(row_u, col_u) += diff;
-            (*ele_mat)(row_v, col_v) += diff;
-            (*ele_mat)(row_w, col_w) += diff;
+          // 1. K_mu (对角线上的速度-速度耦合)
+          (*ele_mat)(row_u, col_u) += diff;
+          (*ele_mat)(row_v, col_v) += diff;
+          (*ele_mat)(row_w, col_w) += diff;
 
-            // 2. G (右上角块：速度-压力耦合)
-            (*ele_mat)(row_u, col_p) += G_x;
-            (*ele_mat)(row_v, col_p) += G_y;
-            (*ele_mat)(row_w, col_p) += G_z;
+          // 2. G (右上角块：速度-压力耦合)
+          (*ele_mat)(row_u, col_p) += G_x;
+          (*ele_mat)(row_v, col_p) += G_y;
+          (*ele_mat)(row_w, col_p) += G_z;
 
-            // 3. D (左下角块：压力-速度耦合，由于乘了-1，它就是 G 的转置)
-            (*ele_mat)(row_p, col_u) += D_x;
-            (*ele_mat)(row_p, col_v) += D_y;
-            (*ele_mat)(row_p, col_w) += D_z;
+          // 3. D (左下角块：压力-速度耦合，由于乘了-1，它就是 G 的转置)
+          (*ele_mat)(row_p, col_u) += D_x;
+          (*ele_mat)(row_p, col_v) += D_y;
+          (*ele_mat)(row_p, col_w) += D_z;
 
-            // 4. K_pspg (右下角块：压力-压力耦合，拯救主元为0)
-            (*ele_mat)(row_p, col_p) += pspg;
-          }
+          // 4. K_pspg (右下角块：压力-压力耦合，拯救主元为0)
+          (*ele_mat)(row_p, col_p) += pspg;
         }
       }
+    }
 }
 /*************************************************************************
  * 计算 N-S 方程的牛顿雅可比矩阵 (Newton Jacobian Matrix)

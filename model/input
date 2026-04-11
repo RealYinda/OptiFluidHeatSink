@@ -8,20 +8,24 @@
 #scale
 1e-3
 #in_filename
-Prism_chiplet.mphtxt
+Channel_debug.mphtxt
 #out_filename
-Prism_chiplet.k
+Channel_debug.k
 #BoundaryNum
-0
+3
 #Boudary_Imformation
 #Boundary1
-1
+0
 #Boundary1_arr
-1 0 0 0
+0 0 0 0
 #Boundary2
-1
+0
 #Boundary2_arr
-11 0 0 0
+0 0 0 0
+#Boundary3
+0
+#Boundary3_arr
+0 0 0 0
 
 
 

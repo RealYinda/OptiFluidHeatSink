@@ -25,7 +25,8 @@
 //update #0
 //自定义宏管理文件
 #include "MacrosManager.h"
-
+#include "Material.h"
+#include "VectorData.h"
 /// 使用CGAL里的功能
 #include <CGAL/Simple_cartesian.h>
 #include <CGAL/AABB_tree.h>
@@ -176,6 +177,27 @@ public:
    */
   void computeStress(hier::Patch<NDIM>& patch, const double time,
                      const double dt, const string& component_name);
+  void computePrismStress(
+      int cell_id, int n_vertex,
+      tbox::Array<hier::DoubleVector<NDIM> >& vertex,
+      const tbox::Array<int>& node_mapping,
+      const tbox::Array<double>& T_val,
+      tbox::Pointer<Material> material,
+      tbox::Pointer<pdat::VectorData<NDIM, double> > vec_data,
+      tbox::Pointer<pdat::CellData<NDIM, double> > str_data,
+      tbox::Pointer<pdat::CellData<NDIM, double> > von_Mises);
+  void computeTetStress(
+      int cell_id, int n_vertex,
+      tbox::Array<hier::DoubleVector<NDIM> >& vertex,
+      const tbox::Array<int>& node_mapping,
+      const tbox::Array<double>& T_val,
+      tbox::Pointer<Material> material,
+      tbox::Pointer<pdat::VectorData<NDIM, double> > vec_data,
+      tbox::Pointer<pdat::CellData<NDIM, double> > str_data,
+      tbox::Pointer<pdat::CellData<NDIM, double> > von_Mises);
+  double calcDynamicDetJ(
+      const tbox::Array<hier::DoubleVector<NDIM> >& real_vertex,
+      const hier::DoubleVector<NDIM>& local_pnt);
 
   /*!
    * @brief 支撑指定名称的有限元数值构件, 在单个网格片上完成数值计算.

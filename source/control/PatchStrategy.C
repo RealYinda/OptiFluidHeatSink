@@ -87,14 +87,14 @@
 #include "PatchStrategy.h"
 #include "Matrix.h"
 #include "VectorVariable.h"
-#include "VectorData.h"
+
 #include "CSRMatrixVariable.h"
 #include "CSRMatrixData.h"
 #include "BaseElement.h"
 #include "IntegratorManager.h"
 #include "ShapeFunctionManager.h"
 #include "MaterialManager.h"
-#include "Material.h"
+
 #include "BaseShapeFunction.h"
 #include "BaseIntegrator.h"
 #include "JAUMIN_Macros.h"
@@ -403,6 +403,7 @@ void PatchStrategy::initializeComponent(
     M_dof_info->registerToInitComponent(component);
     //update #8 @4
     T_dof_info->registerToInitComponent(component);
+    F_dof_info->registerToInitComponent(component);
   } else if (component_name == "ALLOC_F") {
     /// 内存构件，流体力学
     component->registerPatchData(F_matrix_id);
@@ -508,10 +509,15 @@ void PatchStrategy::initializePatchData(hier::Patch<NDIM>& patch,
   NULL_USE(time); /**< 初始化中没有用到time */
 
   if (initial_time) {
+    tbox::pout<<"初始化变量中......"<<endl;
     InitVariableComponent(patch);
+    tbox::pout<<"初始化材料参数中......"<<endl;
     InitMaterialComponent(patch);
+    tbox::pout<<"初始化边界条件中......"<<endl;
     InitBoundaryComponent(patch);
+    tbox::pout<<"初始化应力优化中......"<<endl;
     InitStressRecoveryComponent(patch);
+    tbox::pout<<"初始化自由度中......"<<endl;
     InitDOFsComponent(patch);
   }
 }
@@ -598,7 +604,8 @@ void PatchStrategy::InitVariableComponent(hier::Patch<NDIM>& patch){
   GET_PATCH_DATA(patch, velocity_node, F_vel_plot_id, Node, double);
   GET_PATCH_DATA(patch, pressure_node, F_pre_plot_id, Node, double);
   int num_cells = patch.getNumberOfCells(1);
-  int num_nodes = patch.getNumberOfNodes(1);
+  int num_cells_local = patch.getNumberOfCells(0);
+  int num_nodes = patch.getNumberOfNodes(0);
   for (int nn = 0; nn < num_nodes; ++nn){
     for (int j = 0; j < NDIM; ++j) (*plot)(j, nn) = 0;
     (*th_plot)(0,nn)=293.15;/// 温度场绘图
@@ -612,11 +619,14 @@ void PatchStrategy::InitVariableComponent(hier::Patch<NDIM>& patch){
   for(int cc = 0; cc < num_cells; ++cc){
     (*electric_data)(0,cc) = 0.0; /// 电场
     for (int j = 0; j < 6; ++j) (*str)(j, cc) = 0.0;
-    (*von_Mises)(0,cc)=0;
+
     for(int j = 0; j < 6 * (NDIM+1); j ++){
       (*improved_coef)(j,cc) = 0.;
       (*plot_coef)(j,cc) = 0.;
     }
+  }
+  for(int cc = 0; cc < num_cells_local; ++cc){
+    (*von_Mises)(0,cc)=0;
   }
 
 
@@ -704,30 +714,31 @@ void PatchStrategy::InitDOFsComponent(hier::Patch<NDIM>& patch){
   int num_cells = patch.getNumberOfCells(1);
   int* M_dis_ptr = M_dof_info->getDOFDistribution(patch);
   int* T_dis_ptr = T_dof_info->getDOFDistribution(patch);
-//  int* F_dis_ptr = F_dof_info->getDOFDistribution(patch);
+  int* F_dis_ptr = F_dof_info->getDOFDistribution(patch);
   for(int nn = 0; nn < num_nodes; nn++){
     /// 首先将其自由度全部设置为0
     M_dis_ptr[nn] = 0;
     T_dis_ptr[nn] = 1;
-//    F_dis_ptr[nn] = 0;
+    F_dis_ptr[nn] = 0;
   }
   for(int cc = 0; cc < num_cells; cc++){
     int material_mark = (*materialid_data)(0,cc);
     /// 流体的序号都安排在100以上
-    for(int loc_nn = 0; loc_nn < 4; loc_nn ++){
+    int cell_node_num = cell_node_ext[cc+1]-cell_node_ext[cc];
+    for(int loc_nn = 0; loc_nn < cell_node_num; loc_nn ++){
       int glo_nn = cell_node_idx[cell_node_ext[cc]+loc_nn];
       if(material_mark > 100){
-//        F_dis_ptr[glo_nn] = cell_node_ext[cc+1]-cell_node_ext[cc];
+        F_dis_ptr[glo_nn] = 4;
       }
       else{
-        M_dis_ptr[glo_nn] = 1;
+        M_dis_ptr[glo_nn] = 3;
       }
     }
   }
   /// 建立映射
   M_dof_info->buildPatchDOFMapping(patch);
   T_dof_info->buildPatchDOFMapping(patch);
-//  F_dof_info->buildPatchDOFMapping(patch);
+  F_dof_info->buildPatchDOFMapping(patch);
 
 
 }
@@ -756,7 +767,7 @@ void PatchStrategy::InitBoundaryComponent(hier::Patch<NDIM>& patch){
                          inlet_velocity_mark_id[face_idx], FACE, 1);
       for(int ff = 0; ff < all_face_velocity.getSize();ff ++){
         int this_face = all_face_velocity[ff];
-        int face_node_num = face_node_ext[ff+1]-face_node_ext[ff];
+        int face_node_num = face_node_ext[this_face+1]-face_node_ext[this_face];
         for(int nn = 0; nn < face_node_num; nn ++){
           int glo_nn = face_node_idx[face_node_ext[this_face]+nn];
           /// 流速边界
@@ -773,7 +784,7 @@ void PatchStrategy::InitBoundaryComponent(hier::Patch<NDIM>& patch){
                          wall_velocity_mark_id[face_idx], FACE, 1);
       for(int ff = 0; ff < all_face_velocity.getSize();ff ++){
         int this_face = all_face_velocity[ff];
-        int face_node_num = face_node_ext[ff+1]-face_node_ext[ff];
+        int face_node_num = face_node_ext[this_face+1]-face_node_ext[this_face];
         for(int nn = 0; nn < face_node_num; nn ++){
           int glo_nn = face_node_idx[face_node_ext[this_face]+nn];
           /// 壁边界
@@ -1019,6 +1030,8 @@ void PatchStrategy::computeOnPatch(hier::Patch<NDIM>& patch, const double time,
     buildFluidResidualRHSOnPatch(patch, time, dt, component_name);
   }else if (component_name == "F_CONS_RES") {
     applyFluidJacobianConstraint(patch, time, dt, component_name);
+  }else if (component_name == "F_UPDATE") {
+    updateFluidSolution(patch, time, dt, component_name);
   } else {
     TBOX_ERROR(" PatchStrategy :: component name is error! ");
   }
@@ -1177,115 +1190,20 @@ void PatchStrategy::computeStress(hier::Patch<NDIM>& patch, const double time,
     tbox::Pointer<MaterialManager<NDIM> > material_manager =
         MaterialManager<NDIM>::getManager();
 
-    //update #3: @2 给不同实体中的单元赋不同的材料
-    //实体1（或者实体集1）：Copper
-    //实体2（或者实体集2）：Silicon
-    //默认：Air
-    //at 2017-04-21 by tong
+    tbox::Pointer<Material> material
+        = material_manager->getMaterial(GET_USER_MAT((*materialid_data)(0,i)));
 
-    tbox::Pointer<Material> material =
-        material_manager->getMaterial("Gold");
-
-    if((*materialid_data)(0,i)==1)
-      material =	material_manager->getMaterial("Silicon");
-    else if((*materialid_data)(0,i)==13)
-      material =	material_manager->getMaterial("MoCu");
-    else if((*materialid_data)(0,i)==2)
-      material =	material_manager->getMaterial("Copper");
-    else if((*materialid_data)(0,i)==4)
-      material =	material_manager->getMaterial("SiO2");
-    else if((*materialid_data)(0,i)==5)
-      material =	material_manager->getMaterial("SiN");
-    else if((*materialid_data)(0,i)==3)
-      material =	material_manager->getMaterial("Gold");
-    else if((*materialid_data)(0,i)==15)
-      material =	material_manager->getMaterial("GaN");
-    else if((*materialid_data)(0,i)==16)
-      material =	material_manager->getMaterial("Al2O3");
-    else if((*materialid_data)(0,i)==17)
-      material =	material_manager->getMaterial("Alloy");
-    else if((*materialid_data)(0,i)==6)
-      material =	material_manager->getMaterial("Aluminum");
-    else
-      material =	material_manager->getMaterial("Gold");
-
-    double temp_T=0;
-    for(int t=0;t<4;t++)
-    {temp_T+=T_val[t]/4;}
-    //double Sigma=material->getSigma(temp_T);
-
-    /// 取出自由度数目.
-    int n_dof = shape_func->getNumberOfDof();
-
-    /// 取出积分点数目.
-    int num_quad_pnts = integrator->getNumberOfQuadraturePoints();
-
-    /// 取出积分点.
-    tbox::Array<hier::DoubleVector<NDIM> > quad_pnt =
-        integrator->getQuadraturePoints(vertex);
-
-    /// 取出积分点的积分权重.
-    tbox::Array<double> weight = integrator->getQuadratureWeights();
-
-    /// 取出基函数在积分点的值和梯度值.
-    tbox::Array<tbox::Array<tbox::Array<double> > > bas_grad =
-        shape_func->gradient(vertex, quad_pnt);
-
-    /// 取出模量矩阵
-    tbox::Array<tbox::Array<double> > moduli = material->getModuli(temp_T);
-    /// \lambda
-    double a = moduli[0][0];
-    /// G
-    double b = moduli[0][1];
-    /// \lambda+2G
-    double c = moduli[3][3];
-
-    tbox::Array<double> stress(6);
-
-    /// 计算单元应力.
-    for (int i1 = 0; i1 < 6; ++i1) stress[i1] = 0.0;
-    for (int l = 0; l < num_quad_pnts; ++l) {
-      /// 该点的积分权重.
-      double w = weight[l];
-
-      /// 初始化位移在积分点的梯度值.
-      double u_grad[NDIM][NDIM];
-      for (int i1 = 0; i1 < NDIM; ++i1) {
-        for (int j1 = 0; j1 < NDIM; ++j1) {
-          u_grad[i1][j1] = 0.0;
-        }
-      }
-
-      /// 计算位移在积分点的梯度值.
-      for (int i1 = 0; i1 < n_dof; ++i1) {
-        double* tmp_val = &(vec_data->getPointer()[node_mapping[NDIM * i1]]);
-        for (int j1 = 0; j1 < NDIM; ++j1) {
-          for (int k1 = 0; k1 < NDIM; ++k1) {
-            u_grad[j1][k1] += tmp_val[j1] * bas_grad[l][i1][k1];
-          }
-        }
-      }
-
-      /// 计算单元应力.
-      stress[0] += w * (a * u_grad[0][0] + b * (u_grad[1][1] + u_grad[2][2]));
-      stress[1] += w * (a * u_grad[1][1] + b * (u_grad[0][0] + u_grad[2][2]));
-      stress[2] += w * (a * u_grad[2][2] + b * (u_grad[1][1] + u_grad[0][0]));
-      stress[3] += w * c * (u_grad[0][1] + u_grad[1][0]);
-      stress[4] += w * c * (u_grad[1][2] + u_grad[2][1]);
-      stress[5] += w * c * (u_grad[0][2] + u_grad[2][0]);
+    /// 根据顶点数量智能分发计算任务
+    if (n_vertex == 4) {
+      // 4节点 -> 四面体
+      computeTetStress(i, n_vertex, vertex, node_mapping, T_val, material, vec_data, str_data, von_Mises);
+    } else if (n_vertex == 6) {
+      // 6节点 -> 三棱柱
+      computePrismStress(i, n_vertex, vertex, node_mapping, T_val, material, vec_data, str_data, von_Mises);
+    } else {
+      // 其他未知单元类型，可输出警告或抛出异常
+      TBOX_ERROR("未知的单元节点数");
     }
-
-    /// 将单元应力回填到应力数据片.
-    for (int j = 0; j < 6; ++j) {
-      (*str_data)(j, i) = stress[j];
-    }
-
-    //计算von Mises应力
-    double temp_v=0;
-    temp_v=pow((stress[0]-stress[1]),2)+pow((stress[1]-stress[2]),2)+
-        pow((stress[2]-stress[0]),2)+6*(stress[3]*stress[3]+stress[4]*stress[4]+stress[5]*stress[5]);
-
-    (*von_Mises)(0,i)=sqrt(temp_v/2);
   }
 }
 
@@ -2356,6 +2274,14 @@ void PatchStrategy::buildRHSOnPatch(hier::Patch<NDIM>& patch, const double time,
     /// 取出单元对象.
     tbox::Pointer<BaseElement<NDIM> > ele =
         d_element_manager->getElement(d_element_type[0]);
+    /// 取出单元对象.
+    /// 注意！这里添加了三棱柱单元，它的type是第二个
+    if(n_vertex == 4)
+      ele = d_element_manager->getElement("LinearTetrahedron");
+    else if(n_vertex == 6)
+      ele = d_element_manager->getElement("LinearPrism");
+    else
+      TBOX_ERROR("Elementary nodes with number \"" << n_vertex << "\" not matched.\n");
 
     tbox::Pointer<tbox::Vector<double> > ele_vec = new tbox::Vector<double>();
     ele_vec->resize(n_dof);
@@ -2366,8 +2292,8 @@ void PatchStrategy::buildRHSOnPatch(hier::Patch<NDIM>& patch, const double time,
 
     /// 计算单元右端项.
     /// Vinta Yin-Da Wang:静力学
-    T_val[0] = 650.;T_val[1] = 650.;T_val[2] = 650.;T_val[3] = 650.;
-    T_val[0] = 300.;T_val[1] = 300.;T_val[2] = 300.;T_val[3] = 300.;
+    //    T_val[0] = 650.;T_val[1] = 650.;T_val[2] = 650.;T_val[3] = 650.;
+    //    T_val[0] = 300.;T_val[1] = 300.;T_val[2] = 300.;T_val[3] = 300.;
     ele->buildElementRHS(vertex, dt, time, ele_vec, d_newmark, (*materialid_data)(0,i),T_val,Tolder_val);
     for (int ii = 0; ii < n_dof; ++ii)
       vec_data->addVectorValue(node_mapping[ii], (*ele_vec)[ii]);
@@ -2409,6 +2335,7 @@ void PatchStrategy::buildMatrixOnPatch(hier::Patch<NDIM>& patch,
   tbox::Pointer<pdat::CSRMatrixData<NDIM, double> > mat_data =
       patch.getPatchData(d_matrix_id);
 
+
   for (int i = 0; i < num_cells; ++i) {
     int n_vertex = can_extent[i + 1] - can_extent[i];
     int n_dof = NDIM * n_vertex;
@@ -2425,8 +2352,6 @@ void PatchStrategy::buildMatrixOnPatch(hier::Patch<NDIM>& patch,
         vertex[i1][k] = (*node_coord)(k, can_indices[j]);
       }
     }
-    elem_T = (T_val[0]+T_val[1]+T_val[2]+T_val[3])/4;
-    elem_T = 600.;
 
     tbox::Pointer<tbox::Matrix<double> > ele_mat = new tbox::Matrix<double>();
     ele_mat->resize(n_dof, n_dof);
@@ -2436,8 +2361,22 @@ void PatchStrategy::buildMatrixOnPatch(hier::Patch<NDIM>& patch,
       }
     }
     /// 取出单元对象.
+    /// 注意！这里添加了三棱柱单元，它的type是第二个
+    /// 默认为四面体单元组装
     tbox::Pointer<BaseElement<NDIM> > ele =
         d_element_manager->getElement(d_element_type[0]);
+    if(n_vertex == 4){
+      ele = d_element_manager->getElement("LinearTetrahedron");
+      elem_T = (T_val[0]+T_val[1]+T_val[2]+T_val[3])/4;
+    }
+    else if(n_vertex == 6){
+      ele = d_element_manager->getElement("LinearPrism");
+      elem_T = (T_val[0]+T_val[1]+T_val[2]+T_val[3]+T_val[4]+T_val[5])/6;
+    }
+
+    else
+      TBOX_ERROR("Elementary nodes with number \"" << n_vertex << "\" not matched.\n");
+
 
     //update #6 @8 通过宏定义值选择程序为静态求解还是瞬态求解
     //静态时
@@ -3442,6 +3381,13 @@ void PatchStrategy::buildInitFluidMatrixOnPatch(hier::Patch<NDIM>& patch, const 
       /// 取出单元对象
       tbox::Pointer<BaseElement<NDIM> > ele =
           d_element_manager->getElement(d_element_type[0]);
+      if(n_vertex == 4)
+        ele = d_element_manager->getElement("LinearTetrahedron");
+      else if(n_vertex == 6)
+        ele = d_element_manager->getElement("LinearPrism");
+      else
+        TBOX_ERROR("Elementary nodes with number \"" << n_vertex << "\" not matched.\n");
+
 
       /// 调用计算 Stokes 单元刚度矩阵的底层函数
       /// 该函数内部应包含：粘性耗散矩阵 K_mu、压力梯度矩阵 G、散度约束矩阵 D，以及稳定化项 K_PSPG
@@ -3449,8 +3395,10 @@ void PatchStrategy::buildInitFluidMatrixOnPatch(hier::Patch<NDIM>& patch, const 
       /// 累加单元矩阵到全局系统
       for (int r = 0; r < n_dof; ++r) {
         int row = mapping[r];
+        TBOX_ASSERT(row>=0);
         for (int c = 0; c < n_dof; ++c) {
           int col = mapping[c];
+          TBOX_ASSERT(col>=0);
           mat_data->addMatrixValue(row, col, (*ele_mat)(r, c));
         }
       }
@@ -3470,13 +3418,15 @@ void PatchStrategy::applyInitFluidConstraint(hier::Patch<NDIM>& patch, const dou
   GET_PATCH_DATA(patch, fluid_boundary, boundary_fluid_di_id, Node, int);
   /// 自由度信息中的映射信息 (NDIM+1个自由度)
   int* dof_map = F_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  /// 必须在取出指针之前就assemble
+  mat_data->assemble();
 
   /// 取出矩阵向量的核心数据结构的指针
   int* row_start = mat_data->getRowStartPointer();
   int* col_idx   = mat_data->getColumnIndicesPointer();
   double* mat_val = mat_data->getValuePointer();
   double* vec_val = vec_data->getPointer();
-  mat_data->assemble();
+
   int num_nodes = patch.getNumberOfNodes(1);
   for (int node_id = 0; node_id < num_nodes; ++node_id){
     int bc_type = (*fluid_boundary)(0, node_id);
@@ -3983,6 +3933,8 @@ void PatchStrategy::registerPlotData(
   javis_writer->registerPlotQuantity("Emag","SCALAR",E_mag_id);
   javis_writer->registerPlotQuantity("mat_plot","SCALAR",material_num_id);
   javis_writer->registerPlotQuantity("entity_plot","SCALAR",d_EntityIdOfCell_id);
+  javis_writer->registerPlotQuantity("velocity","VECTOR",F_vel_plot_id);
+  javis_writer->registerPlotQuantity("pressure","SCALAR",F_pre_plot_id);
 }
 
 /*************************************************************************
@@ -4387,4 +4339,196 @@ void PatchStrategy::QueryFieldAtPoints(hier::Patch<NDIM>& patch, const string& i
 
 
 
+}
+
+void PatchStrategy::computeTetStress(
+    int cell_id, int n_vertex,
+    tbox::Array<hier::DoubleVector<NDIM> >& vertex,
+    const tbox::Array<int>& node_mapping,
+    const tbox::Array<double>& T_val,
+    tbox::Pointer<Material> material,
+    tbox::Pointer<pdat::VectorData<NDIM, double> > vec_data,
+    tbox::Pointer<pdat::CellData<NDIM, double> > str_data,
+    tbox::Pointer<pdat::CellData<NDIM, double> > von_Mises){
+  /// 计算四面体平均温度 (4个节点)
+  double temp_T = 0.0;
+  for(int t = 0; t < n_vertex; t++) {
+    temp_T += T_val[t] / n_vertex;
+  }
+
+  /// 取出四面体积分器和形函数
+  tbox::Pointer<IntegratorManager<NDIM> > integrator_manager
+      = IntegratorManager<NDIM>::getManager();
+  tbox::Pointer<BaseIntegrator<NDIM> > integrator
+      = integrator_manager->getIntegrator("LinearTetrahedron");
+
+  tbox::Pointer<ShapeFunctionManager<NDIM> > shape_manager
+      = ShapeFunctionManager<NDIM>::getManager();
+  tbox::Pointer<BaseShapeFunction<NDIM> > shape_func
+      = shape_manager->getShapeFunction("LinearTetrahedron");
+
+  int n_dof = shape_func->getNumberOfDof();
+  int num_quad_pnts = integrator->getNumberOfQuadraturePoints();
+  tbox::Array<hier::DoubleVector<NDIM> > quad_pnt
+      = integrator->getQuadraturePoints(vertex);
+  tbox::Array<double> weight = integrator->getQuadratureWeights();
+  tbox::Array<tbox::Array<tbox::Array<double> > > bas_grad = shape_func->gradient(vertex, quad_pnt);
+
+  /// 取出模量矩阵
+  tbox::Array<tbox::Array<double> > moduli = material->getModuli(temp_T);
+  double a = moduli[0][0];
+  double b = moduli[0][1];
+  double c = moduli[3][3];
+
+  tbox::Array<double> stress(6);
+  for (int i1 = 0; i1 < 6; ++i1) stress[i1] = 0.0;
+
+  double sum_w = 0.0;
+
+  for (int l = 0; l < num_quad_pnts; ++l) {
+    double w = weight[l];
+    sum_w += w;
+
+    double u_grad[NDIM][NDIM] = {{0.0}};
+    for (int i1 = 0; i1 < n_dof; ++i1) {
+      double* tmp_val = &(vec_data->getPointer()[node_mapping[NDIM * i1]]);
+      for (int j1 = 0; j1 < NDIM; ++j1) {
+        for (int k1 = 0; k1 < NDIM; ++k1) {
+          u_grad[j1][k1] += tmp_val[j1] * bas_grad[l][i1][k1];
+        }
+      }
+    }
+
+    stress[0] += w * (a * u_grad[0][0] + b * (u_grad[1][1] + u_grad[2][2]));
+    stress[1] += w * (a * u_grad[1][1] + b * (u_grad[0][0] + u_grad[2][2]));
+    stress[2] += w * (a * u_grad[2][2] + b * (u_grad[1][1] + u_grad[0][0]));
+    stress[3] += w * c * (u_grad[0][1] + u_grad[1][0]);
+    stress[4] += w * c * (u_grad[1][2] + u_grad[2][1]);
+    stress[5] += w * c * (u_grad[0][2] + u_grad[2][0]);
+  }
+
+  /// 归一化平均
+  for (int j = 0; j < 6; ++j) {
+    stress[j] /= sum_w;
+    (*str_data)(j, cell_id) = stress[j];
+  }
+
+  /// 计算 von Mises 应力
+  double temp_v = pow((stress[0]-stress[1]),2) + pow((stress[1]-stress[2]),2) + pow((stress[2]-stress[0]),2)
+      + 6*(stress[3]*stress[3] + stress[4]*stress[4] + stress[5]*stress[5]);
+
+  (*von_Mises)(0, cell_id) = sqrt(temp_v / 2.0);
+}
+void PatchStrategy::computePrismStress(
+    int cell_id, int n_vertex,
+    tbox::Array<hier::DoubleVector<NDIM> >& vertex,
+    const tbox::Array<int>& node_mapping,
+    const tbox::Array<double>& T_val,
+    tbox::Pointer<Material> material,
+    tbox::Pointer<pdat::VectorData<NDIM, double> > vec_data,
+    tbox::Pointer<pdat::CellData<NDIM, double> > str_data,
+    tbox::Pointer<pdat::CellData<NDIM, double> > von_Mises) {
+
+  /// 计算三棱柱的平均温度 (6个节点)
+  double temp_T = 0.0;
+  for(int t = 0; t < n_vertex; t++) {
+      temp_T += T_val[t] / n_vertex;
+  }
+
+  /// 取出三棱柱积分器和形函数
+  tbox::Pointer<IntegratorManager<NDIM> > integrator_manager = IntegratorManager<NDIM>::getManager();
+  tbox::Pointer<BaseIntegrator<NDIM> > integrator = integrator_manager->getIntegrator("LinearPrism");
+
+  tbox::Pointer<ShapeFunctionManager<NDIM> > shape_manager = ShapeFunctionManager<NDIM>::getManager();
+  tbox::Pointer<BaseShapeFunction<NDIM> > shape_func = shape_manager->getShapeFunction("LinearPrism");
+
+  int n_dof = shape_func->getNumberOfDof();
+  int num_quad_pnts
+      = integrator->getNumberOfQuadraturePoints(); // 三棱柱通常为 6 个积分点
+  tbox::Array<hier::DoubleVector<NDIM> > local_quad_pnt
+      = integrator->getLocalQuadraturePoints();
+  tbox::Array<double> weight
+      = integrator->getQuadratureWeights();
+  tbox::Array<tbox::Array<tbox::Array<double> > > bas_grad = shape_func->gradient(vertex, local_quad_pnt);
+
+  /// 取出模量矩阵
+  tbox::Array<tbox::Array<double> > moduli = material->getModuli(temp_T);
+  double a = moduli[0][0]; // \lambda + 2G
+  double b = moduli[0][1]; // \lambda
+  double c = moduli[3][3]; // G
+
+  tbox::Array<double> stress(6);
+  for (int i1 = 0; i1 < 6; ++i1) stress[i1] = 0.0;
+
+  double sum_JxW = 0.0; // 极其重要：用于多积分点应力的加权平均
+
+  for (int l = 0; l < num_quad_pnts; ++l) {
+    double detJ = calcDynamicDetJ(vertex, local_quad_pnt[l]);
+    double JxW = detJ * weight[l];
+    sum_JxW += JxW; // 累加真实体积
+
+    double u_grad[NDIM][NDIM] = {{0.0}};
+    for (int i1 = 0; i1 < n_dof; ++i1) {
+      double* tmp_val = &(vec_data->getPointer()[node_mapping[NDIM * i1]]);
+      for (int j1 = 0; j1 < NDIM; ++j1) {
+        for (int k1 = 0; k1 < NDIM; ++k1) {
+          u_grad[j1][k1] += tmp_val[j1] * bas_grad[l][i1][k1];
+        }
+      }
+    }
+
+    /// 在当前积分点累加应力 (乘以权重 w)
+    stress[0] += JxW * (a * u_grad[0][0] + b * (u_grad[1][1] + u_grad[2][2]));
+    stress[1] += JxW * (a * u_grad[1][1] + b * (u_grad[0][0] + u_grad[2][2]));
+    stress[2] += JxW * (a * u_grad[2][2] + b * (u_grad[1][1] + u_grad[0][0]));
+    stress[3] += JxW * c * (u_grad[0][1] + u_grad[1][0]);
+    stress[4] += JxW * c * (u_grad[1][2] + u_grad[2][1]);
+    stress[5] += JxW * c * (u_grad[0][2] + u_grad[2][0]);
+  }
+
+  /// 归一化平均：除以积分权重总和 (这步在三棱柱中不可省略！)
+  for (int j = 0; j < 6; ++j) {
+    stress[j] /= sum_JxW;
+    (*str_data)(j, cell_id) = stress[j];
+  }
+
+  /// 计算 von Mises 应力
+  double temp_v = pow((stress[0]-stress[1]),2) + pow((stress[1]-stress[2]),2) + pow((stress[2]-stress[0]),2)
+                  + 6*(stress[3]*stress[3] + stress[4]*stress[4] + stress[5]*stress[5]);
+
+  (*von_Mises)(0, cell_id) = sqrt(temp_v / 2.0);
+}
+double PatchStrategy::calcDynamicDetJ(
+    const tbox::Array<hier::DoubleVector<NDIM> >& real_vertex,
+    const hier::DoubleVector<NDIM>& local_pnt) {
+
+  double xi   = local_pnt[0];
+  double eta  = local_pnt[1];
+  double zeta = local_pnt[2];
+
+  // 1. 获取局部偏导数
+  double dN_local[6][3];
+  dN_local[0][0] = -(1.0 - zeta) / 2.0; dN_local[0][1] = -(1.0 - zeta) / 2.0; dN_local[0][2] = -(1.0 - xi - eta) / 2.0;
+  dN_local[1][0] =  (1.0 - zeta) / 2.0; dN_local[1][1] =  0.0;                dN_local[1][2] = -xi / 2.0;
+  dN_local[2][0] =  0.0;                dN_local[2][1] =  (1.0 - zeta) / 2.0; dN_local[2][2] = -eta / 2.0;
+  dN_local[3][0] = -(1.0 + zeta) / 2.0; dN_local[3][1] = -(1.0 + zeta) / 2.0; dN_local[3][2] =  (1.0 - xi - eta) / 2.0;
+  dN_local[4][0] =  (1.0 + zeta) / 2.0; dN_local[4][1] =  0.0;                dN_local[4][2] =  xi / 2.0;
+  dN_local[5][0] =  0.0;                dN_local[5][1] =  (1.0 + zeta) / 2.0; dN_local[5][2] =  eta / 2.0;
+
+  // 2. 组装转置雅可比矩阵
+  double J[3][3] = {{0.0,0.0,0.0},{0.0,0.0,0.0},{0.0,0.0,0.0}};
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      for (int k = 0; k < 6; ++k) {
+        J[i][j] += dN_local[k][i] * real_vertex[k][j];
+      }
+    }
+  }
+
+  // 3. 计算并返回绝对值 |detJ|
+  double detJ = J[0][0]*(J[1][1]*J[2][2] - J[1][2]*J[2][1])
+              - J[0][1]*(J[1][0]*J[2][2] - J[1][2]*J[2][0])
+              + J[0][2]*(J[1][0]*J[2][1] - J[1][1]*J[2][0]);
+
+  return std::abs(detJ);
 }

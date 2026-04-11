@@ -57,9 +57,11 @@ struct NewmarkData
 #define THERMAL_SOURCE 0
 
 #define ELECTRIC_COMPUTATION 0
-#define THERMAL_COMPUTATION 1
+#define THERMAL_COMPUTATION 0
 #define ELASTIC_COMPUTATION 0
-#define FLUID_COMPUTATION 0
+#define FLUID_COMPUTATION 1
+
+#define NEWTON_RAPHSON 0
 
 // @  update #6 2017-05-02
 // @  used by:LinearTet.h(.cpp), PatchStrategy.h(.cpp)
@@ -68,10 +70,10 @@ struct NewmarkData
 const double BETA=1;
 
 // @  基本材料属性结构体
-const int ENTITY_NUM=13;
+const int ENTITY_NUM=3;
 //const int Copper_id[]={7, 8, 15, 16, 23, 24, 31, 32, 39, 40, 47, 48, 55, 56, 63, 64,
 //                      4,5,6,12,13,14,20,21,22,28,29,30,36,37,38,44,45,46,52,53,54,60,61,62};//2
-const int Copper_id[]={0};
+const int Copper_id[]={1,3};
 //const int Aluminum_id[]={0};//13 into air
 const int Aluminum_id[]={0};
 //const int GaAs_id=375;//12
@@ -87,10 +89,10 @@ const int Alloy_id[]={4, 7, 10, 13};//4
 //253,254,255,256,257,355,356,357,358,359,360,361,362,363,364,365,
 //366,464,465,467,468,469,470,471,472,473,454,475,573,574,575,576,
 //577,578,579,580,581,582,583,584};//9  HT
-const int SiO2_id[]={1, 2, 5, 8, 11};//5
+const int SiO2_id[]={0};//5
 //const int MoCu_id=1;
 //const int SiO2_id[]={};
-const int Water_id[]={0};
+const int Water_id[]={2};
 
 
 // @  update #7 2017-05-06

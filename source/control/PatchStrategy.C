@@ -3488,10 +3488,12 @@ void PatchStrategy::buildInitFluidRHSOnPatch(hier::Patch<NDIM>& patch,
   double* vec_val = vec_data->getPointer();
 
   int num_nodes = patch.getNumberOfNodes(1); // 包含 ghost 节点的本地总数
-
+  int* F_dis_ptr = F_dof_info->getDOFDistribution(patch);
   /// 3. 极简循环：直接遍历所有节点自由度，强行清零
   for (int i = 0; i < num_nodes; ++i) {
+    if(F_dis_ptr[i] == 0) continue;
     for (int d = 0; d < NDIM + 1; ++d) {
+
       int index = dof_map[i] + d;
       vec_val[index] = 0.0;
     }
@@ -3527,10 +3529,12 @@ void PatchStrategy::updateFluidSolution(hier::Patch<NDIM>& patch,
 
   /// 获取节点数 (1 表示包含一层 ghost 节点，保证边界和并行通信更新完整)
   int num_nodes = patch.getNumberOfNodes(1);
+  int* F_dis_ptr = F_dof_info->getDOFDistribution(patch);
 
   /// 极简循环：遍历所有节点，进行向量累加
   for (int i = 0; i < num_nodes; ++i) {
 
+    if(F_dis_ptr[i] == 0) continue;
     /// 提取该节点在全局向量中的起始映射位置
     int base_index = dof_map[i];
 

@@ -333,7 +333,7 @@ void PatchStrategy::registerModelVariable() {
   REGISTER_VARIABLE(F_delta_id,fluid_delta,current,1);
   /// 流体方程的右端项
   DECLARE_MATVEC_VARIABLE(fluid_rhs,Vector,double,F_dof_info);
-  REGISTER_VARIABLE(F_rhs_id,fluid_solution,current,1);
+  REGISTER_VARIABLE(F_rhs_id,fluid_rhs,current,1);
   /// 流体方程的系统矩阵
   DECLARE_MATVEC_VARIABLE(fluid_matrix,CSRMatrix,double,F_dof_info);
   REGISTER_VARIABLE(F_matrix_id,fluid_matrix,current,1);
@@ -3427,7 +3427,7 @@ void PatchStrategy::applyInitFluidConstraint(hier::Patch<NDIM>& patch, const dou
   double* mat_val = mat_data->getValuePointer();
   double* vec_val = vec_data->getPointer();
 
-  int num_nodes = patch.getNumberOfNodes(1);
+  int num_nodes = patch.getNumberOfNodes(0);
   for (int node_id = 0; node_id < num_nodes; ++node_id){
     int bc_type = (*fluid_boundary)(0, node_id);
 
@@ -3490,14 +3490,8 @@ void PatchStrategy::buildInitFluidRHSOnPatch(hier::Patch<NDIM>& patch,
   int num_nodes = patch.getNumberOfNodes(1); // 包含 ghost 节点的本地总数
   int* F_dis_ptr = F_dof_info->getDOFDistribution(patch);
   /// 3. 极简循环：直接遍历所有节点自由度，强行清零
-  for (int i = 0; i < num_nodes; ++i) {
-    if(F_dis_ptr[i] == 0) continue;
-    for (int d = 0; d < NDIM + 1; ++d) {
-
-      int index = dof_map[i] + d;
-      vec_val[index] = 0.0;
-    }
-  }
+  /// 绝对安全的底层一维数组全量清零，彻底杜绝越界！
+  vec_data->fillAll(0.0);
 
 }
 /*************************************************************************
@@ -3511,6 +3505,7 @@ void PatchStrategy::buildInitFluidRHSOnPatch(hier::Patch<NDIM>& patch,
 void PatchStrategy::updateFluidSolution(hier::Patch<NDIM>& patch,
                                         const double time, const double dt,
                                         const string& component_name) {
+  tbox::pout<<"进来了"<<endl;
 
   /// 使用宏提取【当前总解】和【增量解】的向量数据片
   GET_PATCH_DATA(patch, sol_data, F_solution_id, Vector, double);
@@ -3533,6 +3528,7 @@ void PatchStrategy::updateFluidSolution(hier::Patch<NDIM>& patch,
 
   /// 极简循环：遍历所有节点，进行向量累加
   for (int i = 0; i < num_nodes; ++i) {
+    tbox::pout<<"i= "<<i<<" ";
 
     if(F_dis_ptr[i] == 0) continue;
     /// 提取该节点在全局向量中的起始映射位置

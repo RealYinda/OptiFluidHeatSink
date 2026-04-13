@@ -243,7 +243,7 @@ int ElasFlow::advanceLevel(
     d_solver_F->setRHS(vec_id_F);
     d_solver_F->solve(first_step, delta_id_F, patch_level, d_solver_db->getDatabase ("SolverF"));
     tbox::pout<<"Update pressure and velocity data ......"<<endl;
-    F_num_intc_update->computing(patch_level, current_time, 0.0);
+    F_num_intc_update->computing(patch_level, current_time, actual_dt);
     d_alloc_fluid_data->deallocatePatchData(patch_level);
   }
   /// ========================================================

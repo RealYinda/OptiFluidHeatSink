@@ -486,8 +486,8 @@ void PatchStrategy::initializeComponent(
   } else if (component_name == "E_PLOT") {// 数值构件，计算电求解右端项.Electric_PostProcesing
     component->registerCommunicationPatchData(E_solution_id, E_solution_id);
   }else if (component_name == "F_UPDATE") {// 数值构件，计算电求解右端项.Electric_PostProcesing
-    component->registerCommunicationPatchData(F_solution_id, F_solution_id);
-    component->registerCommunicationPatchData(F_delta_id, F_delta_id);
+//    component->registerCommunicationPatchData(F_solution_id, F_solution_id);
+//    component->registerCommunicationPatchData(F_delta_id, F_delta_id);
   }else if (component_name == "Max_T")        {// 规约构件，计算最大温度
   }else if (component_name == "Stress_T")        {// 规约构件，计算最大yingli
   }	else {
@@ -712,6 +712,7 @@ void PatchStrategy::InitDOFsComponent(hier::Patch<NDIM>& patch){
   DECLARE_ADJACENCY(patch,cell,node,Cell,Node);
   int num_nodes = patch.getNumberOfNodes(1);
   int num_cells = patch.getNumberOfCells(1);
+
   int* M_dis_ptr = M_dof_info->getDOFDistribution(patch);
   int* T_dis_ptr = T_dof_info->getDOFDistribution(patch);
   int* F_dis_ptr = F_dof_info->getDOFDistribution(patch);
@@ -723,6 +724,7 @@ void PatchStrategy::InitDOFsComponent(hier::Patch<NDIM>& patch){
   }
   for(int cc = 0; cc < num_cells; cc++){
     int material_mark = (*materialid_data)(0,cc);
+    TBOX_ASSERT(material_mark!=3);
     /// 流体的序号都安排在100以上
     int cell_node_num = cell_node_ext[cc+1]-cell_node_ext[cc];
     for(int loc_nn = 0; loc_nn < cell_node_num; loc_nn ++){
@@ -3505,7 +3507,7 @@ void PatchStrategy::buildInitFluidRHSOnPatch(hier::Patch<NDIM>& patch,
 void PatchStrategy::updateFluidSolution(hier::Patch<NDIM>& patch,
                                         const double time, const double dt,
                                         const string& component_name) {
-  tbox::pout<<"进来了"<<endl;
+
 
   /// 使用宏提取【当前总解】和【增量解】的向量数据片
   GET_PATCH_DATA(patch, sol_data, F_solution_id, Vector, double);
@@ -3523,12 +3525,11 @@ void PatchStrategy::updateFluidSolution(hier::Patch<NDIM>& patch,
   double* delta_val = delta_data->getPointer();
 
   /// 获取节点数 (1 表示包含一层 ghost 节点，保证边界和并行通信更新完整)
-  int num_nodes = patch.getNumberOfNodes(1);
+  int num_nodes = patch.getNumberOfNodes(0);
   int* F_dis_ptr = F_dof_info->getDOFDistribution(patch);
 
   /// 极简循环：遍历所有节点，进行向量累加
   for (int i = 0; i < num_nodes; ++i) {
-    tbox::pout<<"i= "<<i<<" ";
 
     if(F_dis_ptr[i] == 0) continue;
     /// 提取该节点在全局向量中的起始映射位置

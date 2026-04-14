@@ -471,6 +471,7 @@ void PatchStrategy::initializeComponent(
   } else if (component_name == "TH_LOAD") {  // 数值构件，加载热源等.
   } else if (component_name == "TH_CONS") {  // 数值构件，加载固定温度边界， 即第一类边界.
   } else if (component_name == "TH_MAT") {   // 数值构件，计算热求解矩阵。
+    component->registerCommunicationPatchData(th_Told_id, th_Told_id);
   } else if (component_name == "TH_RHS") {   // 数值构件，计算热求解右端项.
     component->registerCommunicationPatchData(th_Told_id, th_Told_id);
     component->registerCommunicationPatchData(E_mag_id, E_mag_id);
@@ -2608,8 +2609,6 @@ void PatchStrategy::applyTh_Constraint(hier::Patch<NDIM>& patch,
 
         } /// 四面体到此结束
         else if(face_node == 4){
-          double b[4]={0,0,0,0};
-          double k[4][4]={{0,0,0,0},{0,0,0,0},{0,0,0,0},{0,0,0,0}};
           //面上四边形的四个顶点编号
           node_id[0]=face_node_idx[face_node_ext[Face_idx[face]]];//Face_idx[face]面的编号
           node_id[1]=face_node_idx[face_node_ext[Face_idx[face]]+1];
@@ -2669,10 +2668,10 @@ void PatchStrategy::applyTh_Constraint(hier::Patch<NDIM>& patch,
   int* col_idx = mat_data->getColumnIndicesPointer();
   double* mat_val = mat_data->getValuePointer();
   /// 边界条件处理.
-  if (patch_geo->hasEntitySet(3, hier::EntityUtilities::NODE)) {
+  if (patch_geo->hasEntitySet(2, hier::EntityUtilities::NODE)) {
     // 获取指定编号和类型的集合包含的网格实体的索引。
     const tbox::Array<int>& entity_idx = patch_geo->getEntityIndicesInSet(
-          3, hier::EntityUtilities::NODE, num_nodes);
+          2, hier::EntityUtilities::NODE, num_nodes);
     int size = entity_idx.getSize();
     /// 对角化 1 法处理约束。
     for (int i = 0; i < size; ++i) {

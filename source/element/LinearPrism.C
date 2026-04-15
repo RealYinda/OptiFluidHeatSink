@@ -683,6 +683,7 @@ void LinearPrism::buildFluidJacobianElementMatrix(
   }
   double mu_value = 1.002e-3;
   double rho = material->getDensity(e_Temperature);
+  TBOX_ASSERT(rho>0);
   int n_nodes = shape_func->getNumberOfDof(); // 6
   int n_dof_total = n_nodes * (NDIM + 1);     // 24
   ele_mat->resize(n_dof_total, n_dof_total);
@@ -713,8 +714,7 @@ void LinearPrism::buildFluidJacobianElementMatrix(
     double du_dx = 0.0, du_dy = 0.0, du_dz = 0.0;
     double dv_dx = 0.0, dv_dy = 0.0, dv_dz = 0.0;
     double dw_dx = 0.0, dw_dy = 0.0, dw_dz = 0.0;
-    double u_grad_N_sum = 0.0;
-    double grad_N_squared_sum = 0.0;
+
     for (int m = 0; m < n_nodes; ++m) {
       double N_m = bas_val[l][m];
       double dNm_dx = bas_grad[l][m][0];
@@ -729,10 +729,25 @@ void LinearPrism::buildFluidJacobianElementMatrix(
       dv_dx += dNm_dx * U_val[m][1]; dv_dy += dNm_dy * U_val[m][1]; dv_dz += dNm_dz * U_val[m][1];
       dw_dx += dNm_dx * U_val[m][2]; dw_dy += dNm_dy * U_val[m][2]; dw_dz += dNm_dz * U_val[m][2];
 
-      u_grad_N_sum += fabs(u_k * dNm_dx + v_k * dNm_dy + w_k * dNm_dz);
-      grad_N_squared_sum += (dNm_dx * dNm_dx + dNm_dy * dNm_dy + dNm_dz * dNm_dz);
     }
     double U_norm = sqrt(u_k * u_k + v_k * v_k + w_k * w_k);
+    /// ====================================================================
+    /// 第 2 步：拿着完整的流速 (u_k, v_k, w_k)，开一个新循环计算特征尺度参数
+    /// ====================================================================
+    double u_grad_N_sum = 0.0;
+    double grad_N_squared_sum = 0.0;
+
+    for (int m = 0; m < n_nodes; ++m) {
+      double dNm_dx = bas_grad[l][m][0];
+      double dNm_dy = bas_grad[l][m][1];
+      double dNm_dz = bas_grad[l][m][2];
+
+      // 核心：完整的流速向量 与 当前节点形函数梯度的内积 的绝对值
+      u_grad_N_sum += fabs(u_k * dNm_dx + v_k * dNm_dy + w_k * dNm_dz);
+
+      // 顺便把 PSPG 需要的纯几何对角线也累加了
+      grad_N_squared_sum += (dNm_dx * dNm_dx + dNm_dy * dNm_dy + dNm_dz * dNm_dz);
+    }
 
 
     double h_supg = 0.0;
@@ -865,7 +880,16 @@ void LinearPrism::buildFluidJacobianElementMatrix(
         double supg_p_y = JxW * tau_supg * U_dot_gradNi * dNj_dy;
         double supg_p_z = JxW * tau_supg * U_dot_gradNi * dNj_dz;
 
-
+        // 补全 PSPG 对 U, V, W 的交叉偏导数
+        /// gemini让加的不知道对不对
+        double pspg_u = -JxW * tau_pspg * rho * (dNi_dx * (Nj * du_dx + U_dot_gradNj) + dNi_dy * (Nj * dv_dx) + dNi_dz * (Nj * dw_dx));
+        double pspg_v = -JxW * tau_pspg * rho * (dNi_dx * (Nj * du_dy) + dNi_dy * (Nj * dv_dy + U_dot_gradNj) + dNi_dz * (Nj * dw_dy));
+        double pspg_w = -JxW * tau_pspg * rho * (dNi_dx * (Nj * du_dz) + dNi_dy * (Nj * dv_dz) + dNi_dz * (Nj * dw_dz + U_dot_gradNj));
+#if PICARD
+pspg_u = 0;
+pspg_v = 0;
+pspg_w = 0;
+#endif
         /// ----------------------------------------------------
         /// 将所有项累加到 16x16 局部矩阵
         /// ----------------------------------------------------
@@ -889,9 +913,14 @@ void LinearPrism::buildFluidJacobianElementMatrix(
         (*ele_mat)(row_w, col_p) += G_z + supg_p_z;
 
         // --- 连续性方程 ---
-        (*ele_mat)(row_p, col_u) += D_x;
-        (*ele_mat)(row_p, col_v) += D_y;
-        (*ele_mat)(row_p, col_w) += D_z;
+//        (*ele_mat)(row_p, col_u) += D_x;
+//        (*ele_mat)(row_p, col_v) += D_y;
+//        (*ele_mat)(row_p, col_w) += D_z;
+//        (*ele_mat)(row_p, col_p) += pspg;
+        // --- 连续性方程 --- (替换你原来的这部分)
+        (*ele_mat)(row_p, col_u) += D_x + pspg_u; // 加上了 pspg_u
+        (*ele_mat)(row_p, col_v) += D_y + pspg_v; // 加上了 pspg_v
+        (*ele_mat)(row_p, col_w) += D_z + pspg_w; // 加上了 pspg_w
         (*ele_mat)(row_p, col_p) += pspg;
 
       }
@@ -949,8 +978,7 @@ void LinearPrism::buildFluidResidualElementVector(
     double dv_dx = 0.0, dv_dy = 0.0, dv_dz = 0.0;
     double dw_dx = 0.0, dw_dy = 0.0, dw_dz = 0.0;
     double dp_dx = 0.0, dp_dy = 0.0, dp_dz = 0.0;
-    double u_grad_N_sum = 0.0;
-    double grad_N_squared_sum = 0.0;
+
     for (int m = 0; m < n_nodes; ++m) {
       double N_m = bas_val[l][m];
       double dNm_dx = bas_grad[l][m][0];
@@ -966,8 +994,27 @@ void LinearPrism::buildFluidResidualElementVector(
       dv_dx += dNm_dx * U_val[m][1]; dv_dy += dNm_dy * U_val[m][1]; dv_dz += dNm_dz * U_val[m][1];
       dw_dx += dNm_dx * U_val[m][2]; dw_dy += dNm_dy * U_val[m][2]; dw_dz += dNm_dz * U_val[m][2];
       dp_dx += dNm_dx * P_val[m]; dp_dy += dNm_dy * P_val[m]; dp_dz += dNm_dz * P_val[m];
+
     }
+
     double U_norm = sqrt(u_k * u_k + v_k * v_k + w_k * w_k);
+    /// ====================================================================
+    /// 第 2 步：拿着完整的流速 (u_k, v_k, w_k)，开一个新循环计算特征尺度参数
+    /// ====================================================================
+    double u_grad_N_sum = 0.0;
+    double grad_N_squared_sum = 0.0;
+
+    for (int m = 0; m < n_nodes; ++m) {
+      double dNm_dx = bas_grad[l][m][0];
+      double dNm_dy = bas_grad[l][m][1];
+      double dNm_dz = bas_grad[l][m][2];
+
+      // 核心：完整的流速向量 与 当前节点形函数梯度的内积 的绝对值
+      u_grad_N_sum += fabs(u_k * dNm_dx + v_k * dNm_dy + w_k * dNm_dz);
+
+      // 顺便把 PSPG 需要的纯几何对角线也累加了
+      grad_N_squared_sum += (dNm_dx * dNm_dx + dNm_dy * dNm_dy + dNm_dz * dNm_dz);
+    }
 
 
 

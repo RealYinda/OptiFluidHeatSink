@@ -3679,6 +3679,7 @@ void PatchStrategy::applyFluidJacobianConstraint(hier::Patch<NDIM>& patch, const
   double* vec_val = vec_data->getPointer();
 
   int num_nodes = patch.getNumberOfNodes(1);
+
   for (int node_id = 0; node_id < num_nodes; ++node_id){
     int bc_type = (*fluid_boundary)(0, node_id);
 
@@ -3706,6 +3707,7 @@ void PatchStrategy::applyFluidJacobianConstraint(hier::Patch<NDIM>& patch, const
             mat_val[j] = 1.0;
           } else {
             mat_val[j] = 0.0;
+            (*mat_data)(col_idx[j], index) = 0.0;
           }
         }
       } // end NDIM 循环

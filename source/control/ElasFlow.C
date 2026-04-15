@@ -250,7 +250,7 @@ int ElasFlow::advanceLevel(
   /// Newton-Raphson iterations
   /// ========================================================
   #if NEWTON_RAPHSON
-  int max_newton_iter = 20;
+  int max_newton_iter = 500;
   double current_error = 1.0;
   int iter = 0;
   while (iter < max_newton_iter && current_error > 1e-6){

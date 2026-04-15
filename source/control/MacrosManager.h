@@ -62,6 +62,7 @@ struct NewmarkData
 #define FLUID_COMPUTATION 1
 
 #define NEWTON_RAPHSON 1
+#define PICARD 0
 
 // @  update #6 2017-05-02
 // @  used by:LinearTet.h(.cpp), PatchStrategy.h(.cpp)
@@ -82,8 +83,8 @@ const int Al2O3_id[]={0};//11
 //const int Solder_bump_id[]={6,9,12,15,18,21};//7
 //const int Underfill_id[]={1,2,3};//8
 const int GaN_id[]={0};//3
-const int Silicon_id[]={3,6,9,12};
-const int Alloy_id[]={4, 7, 10, 13};//4
+const int Silicon_id[]={0};
+const int Alloy_id[]={0};//4
 //const int BCB_id[]={1,3,7,16,25,34,43,52,61,70,79,106,137,138,139,
 //140,141,142,143,144,145,146,147,148,246,247,248,249,250,251,252,
 //253,254,255,256,257,355,356,357,358,359,360,361,362,363,364,365,

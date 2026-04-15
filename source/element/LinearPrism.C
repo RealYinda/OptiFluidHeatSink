@@ -746,7 +746,7 @@ void LinearPrism::buildFluidJacobianElementMatrix(
     }
 
     /// PSPG 稳定化参数
-    double tau_pspg = (h_pspg * h_pspg) / (12.0 * mu_value);
+//    double tau_pspg = (h_pspg * h_pspg) / (12.0 * mu_value);
 
     /// (如果未来用于 N-S Jacobian，这里计算 tau_supg)
     double tau_supg = 0.0;
@@ -758,6 +758,9 @@ void LinearPrism::buildFluidJacobianElementMatrix(
       // 纯扩散极限下，复用 h_pspg 作为特征尺度，避免截断为 0
       tau_supg = (h_pspg * h_pspg) / (4.0 * mu_value / rho);
     }
+    double tau_pspg = tau_supg / rho;
+//    tbox::pout<<tau_pspg<<" aaa"<<e_Temperature<<endl;
+//    TBOX_ASSERT(tau_pspg>0);
     for(int i = 0; i < n_nodes; ++i){
       double Ni = bas_val[l][i];
       double dNi_dx = bas_grad[l][i][0];
@@ -798,6 +801,11 @@ void LinearPrism::buildFluidJacobianElementMatrix(
         double conv_uu = rho_Ni * (U_dot_gradNj + Nj * du_dx);
         double conv_vv = rho_Ni * (U_dot_gradNj + Nj * dv_dy);
         double conv_ww = rho_Ni * (U_dot_gradNj + Nj * dw_dz);
+#if PICARD
+        conv_uu = rho_Ni * U_dot_gradNj;
+        conv_vv = rho_Ni * U_dot_gradNj;
+        conv_ww = rho_Ni * U_dot_gradNj;
+#endif
 
         // 非对角交叉块 (\delta u 在其他方向上的梯度扰动)
         double conv_uv = rho_Ni * Nj * du_dy;  // v_j 扰动 u 方程
@@ -808,6 +816,14 @@ void LinearPrism::buildFluidJacobianElementMatrix(
 
         double conv_wu = rho_Ni * Nj * dw_dx;  // u_j 扰动 w 方程
         double conv_wv = rho_Ni * Nj * dw_dy;  // v_j 扰动 w 方程
+#if PICARD
+        conv_uv = 0.0;
+        conv_uw = 0.0;
+        conv_vu = 0.0;
+        conv_vw = 0.0;
+        conv_wu = 0.0;
+        conv_wv = 0.0;
+#endif
         /// ----------------------------------------------------
         /// SUPG & PSPG 稳定化项
         /// ----------------------------------------------------
@@ -830,6 +846,18 @@ void LinearPrism::buildFluidJacobianElementMatrix(
         double supg_vw = supg_conv_base * (Nj * dv_dz);
         double supg_wu = supg_conv_base * (Nj * dw_dx);
         double supg_wv = supg_conv_base * (Nj * dw_dy);
+        #if PICARD
+        supg_uu = supg_conv_base * (U_dot_gradNj );
+        supg_vv = supg_conv_base * (U_dot_gradNj );
+        supg_ww = supg_conv_base * (U_dot_gradNj );
+
+        supg_uv = 0;
+        supg_uw = 0;
+        supg_vu = 0;
+        supg_vw = 0;
+        supg_wu = 0;
+        supg_wv = 0;
+        #endif
 
         // SUPG 压力梯度项
         // \int \tau_{supg} (U^k \cdot \nabla N_i) * \nabla N_j
@@ -954,7 +982,7 @@ void LinearPrism::buildFluidResidualElementVector(
     }
 
     /// PSPG 稳定化参数
-    double tau_pspg = (h_pspg * h_pspg) / (12.0 * mu_value);
+//    double tau_pspg = (h_pspg * h_pspg) / (12.0 * mu_value);
 
     /// (如果未来用于 N-S Jacobian，这里计算 tau_supg)
     double tau_supg = 0.0;
@@ -966,6 +994,7 @@ void LinearPrism::buildFluidResidualElementVector(
       // 纯扩散极限下，复用 h_pspg 作为特征尺度，避免截断为 0
       tau_supg = (h_pspg * h_pspg) / (4.0 * mu_value / rho);
     }
+    double tau_pspg = tau_supg / rho;
     /// 结束SUPG和PSPG参数的确定
     /// =========================================================
     /// 计算强形式动量残差

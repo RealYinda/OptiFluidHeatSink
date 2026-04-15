@@ -942,6 +942,7 @@ void LinearPrism::buildFluidResidualElementVector(
     double U_norm = sqrt(u_k * u_k + v_k * v_k + w_k * w_k);
 
 
+
     double h_supg = 0.0;
     double h_pspg = 0.0;
     /// 对于压力连续性方程，它不具备流动方向性偏好，

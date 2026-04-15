@@ -3789,8 +3789,15 @@ void PatchStrategy::buildFluidResidualRHSOnPatch(hier::Patch<NDIM>& patch,
 
     /// 调用底层的残差高斯积分函数
     tbox::Pointer<BaseElement<NDIM> > ele = d_element_manager->getElement(d_element_type[0]);
-    //    ele->buildFluidResidualElementVector(vertex, dt, time, ele_vec,
-    //                                          (*materialid_data)(0, cell), U_val, P_val);
+    /// 取出单元对象
+    if(n_vertex == 4)
+      ele = d_element_manager->getElement("LinearTetrahedron");
+    else if(n_vertex == 6)
+      ele = d_element_manager->getElement("LinearPrism");
+    else
+      TBOX_ERROR("Elementary nodes with number \"" << n_vertex << "\" not matched.\n");
+    ele->buildFluidResidualElementVector(vertex, dt, time, ele_vec,
+                                         (*materialid_data)(0, cell), U_val, P_val,T_val);
 
     /// 将局部残差累加到全局 RHS 向量
     for (int r = 0; r < n_dof; ++r) {

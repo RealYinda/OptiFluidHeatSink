@@ -279,6 +279,7 @@ int ElasFlow::advanceLevel(
                << " | Delta Norm: " << delta_L2Norm
                << " | Rel Error: " << current_error << endl;
     d_alloc_fluid_data->deallocatePatchData(patch_level);
+    iter ++;
 
   }
   #endif

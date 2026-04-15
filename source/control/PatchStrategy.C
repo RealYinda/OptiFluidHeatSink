@@ -3628,8 +3628,16 @@ void PatchStrategy::buildFluidMatrixOnPatch(hier::Patch<NDIM>& patch, const doub
       }
     }
     /// 取出单元对象
+    /// 取出单元对象
     tbox::Pointer<BaseElement<NDIM> > ele =
         d_element_manager->getElement(d_element_type[0]);
+    if(n_vertex == 4)
+      ele = d_element_manager->getElement("LinearTetrahedron");
+    else if(n_vertex == 6)
+      ele = d_element_manager->getElement("LinearPrism");
+    else
+      TBOX_ERROR("Elementary nodes with number \"" << n_vertex << "\" not matched.\n");
+
 
     /// =================================================================
     /// 调用计算 N-S 雅可比的底层函数，传入 U_val

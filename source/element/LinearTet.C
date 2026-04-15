@@ -1666,6 +1666,7 @@ void LinearTet::buildFluidJacobianElementMatrix(
         double supg_conv_base = JxW * tau_supg * rho * U_dot_gradNi;
 
         // SUPG 作用于牛顿雅可比的两部分偏导
+        /// SUPG项只有对角位置有耦合，才有U_dot_gradNj
         double supg_uu = supg_conv_base * (U_dot_gradNj + Nj * du_dx);
         double supg_vv = supg_conv_base * (U_dot_gradNj + Nj * dv_dy);
         double supg_ww = supg_conv_base * (U_dot_gradNj + Nj * dw_dz);

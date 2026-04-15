@@ -61,7 +61,7 @@ struct NewmarkData
 #define ELASTIC_COMPUTATION 0
 #define FLUID_COMPUTATION 1
 
-#define NEWTON_RAPHSON 0
+#define NEWTON_RAPHSON 1
 
 // @  update #6 2017-05-02
 // @  used by:LinearTet.h(.cpp), PatchStrategy.h(.cpp)

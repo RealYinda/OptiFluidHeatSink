@@ -1720,7 +1720,7 @@ void LinearTet::buildFluidJacobianElementMatrix(
 }
 void LinearTet::buildFluidResidualElementVector(
     tbox::Array<hier::DoubleVector<NDIM> > real_vertex, const double dt,
-    const double time, tbox::Array<double>& ele_vec,
+    const double time, tbox::Pointer<tbox::Vector<double> > ele_vec,
     int entity_id, tbox::Array<hier::DoubleVector<NDIM> > U_val,
     tbox::Array<double> P_val,tbox::Array<double> T_val){
   tbox::Pointer<IntegratorManager<NDIM> > integrator_manager
@@ -1841,9 +1841,9 @@ void LinearTet::buildFluidResidualElementVector(
       double supg_w = -JxW * tau_supg * U_dot_gradNi * Mom_Rz;
 
       /// 累加动量右端项
-      ele_vec[row_u] += diff_u + conv_u + gradp_u + supg_u;
-      ele_vec[row_v] += diff_v + conv_v + gradp_v + supg_v;
-      ele_vec[row_w] += diff_w + conv_w + gradp_w + supg_w;
+      (*ele_vec)[row_u] += diff_u + conv_u + gradp_u + supg_u;
+      (*ele_vec)[row_v] += diff_v + conv_v + gradp_v + supg_v;
+      (*ele_vec)[row_w] += diff_w + conv_w + gradp_w + supg_w;
 
       /// ----------------------------------------------------
       /// 2. 连续性方程 (压力 P) - 取【正残差】 (+R_p)
@@ -1855,7 +1855,7 @@ void LinearTet::buildFluidResidualElementVector(
       double pspg_term = JxW * tau_pspg * (dNi_dx * Mom_Rx + dNi_dy * Mom_Ry + dNi_dz * Mom_Rz);
 
       /// 累加连续性方程右端项
-      ele_vec[row_p] += div_term + pspg_term;
+      (*ele_vec)[row_p] += div_term + pspg_term;
     }
   }
 

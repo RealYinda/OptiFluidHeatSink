@@ -594,7 +594,7 @@ void LinearPrism::buildInitFluidElementMatrix(
       }
 
       /// PSPG 稳定化参数
-      double tau_pspg = (h_pspg * h_pspg) / (12.0 * mu_value);
+      double tau_pspg = 0.01*(h_pspg * h_pspg) / (12.0 * mu_value);
 
       /// (如果未来用于 N-S Jacobian，这里计算 tau_supg)
       double tau_supg = 0.0;
@@ -606,6 +606,9 @@ void LinearPrism::buildInitFluidElementMatrix(
         // 纯扩散极限下，复用 h_pspg 作为特征尺度，避免截断为 0
         tau_supg = (h_pspg * h_pspg) / (4.0 * mu_value / rho);
       }
+      // 尝试 0.5, 0.2, 或者 0.1。值越小，中心峰值速度越高（越接近理论抛物线）
+      double tune_supg = 0.5e-1;
+      tau_supg *= tune_supg;
       for (int i = 0; i < n_dof; ++i){
         int row_u = i * n_dof_dis + 0;
         int row_v = i * n_dof_dis + 1;
@@ -763,7 +766,7 @@ void LinearPrism::buildFluidJacobianElementMatrix(
     /// PSPG 稳定化参数
 //    double tau_pspg = (h_pspg * h_pspg) / (12.0 * mu_value);
 
-    /// (如果未来用于 N-S Jacobian，这里计算 tau_supg)
+    /// (用于 N-S Jacobian，这里计算 tau_supg)
     double tau_supg = 0.0;
     if (U_norm > 1e-12 && u_grad_N_sum > 1e-12) {
       h_supg = 2.0 * U_norm / u_grad_N_sum;
@@ -773,7 +776,20 @@ void LinearPrism::buildFluidJacobianElementMatrix(
       // 纯扩散极限下，复用 h_pspg 作为特征尺度，避免截断为 0
       tau_supg = (h_pspg * h_pspg) / (4.0 * mu_value / rho);
     }
-    double tau_pspg = tau_supg / rho;
+    double tau_pspg_calc = (tau_supg / rho) * 0.02;
+
+    // 🌟 4. 终极护甲：PSPG 绝对下限（Floor Limiter）！
+    // 无论 h 有多小，tau_pspg 绝对不能低于这个保命值，否则矩阵死无全尸！
+    // 如果发现 MUMPS 还是挂，就把 1e-6 往上调到 1e-5 或 1e-4。
+    double min_tau_pspg = 1e-4;
+
+    // 强行取大值！
+    double tau_pspg = std::max(tau_pspg_calc, min_tau_pspg);
+    // 尝试 0.5, 0.2, 或者 0.1。值越小，中心峰值速度越高（越接近理论抛物线）
+    double tune_supg = 0.5e-1;
+    tau_supg *= tune_supg;
+    /// 强行压制PSPG
+
 //    tbox::pout<<tau_pspg<<" aaa"<<e_Temperature<<endl;
 //    TBOX_ASSERT(tau_pspg>0);
     for(int i = 0; i < n_nodes; ++i){
@@ -931,7 +947,7 @@ pspg_w = 0;
 
 void LinearPrism::buildFluidResidualElementVector(
     tbox::Array<hier::DoubleVector<NDIM> > real_vertex, const double dt,
-    const double time, tbox::Array<double>& ele_vec,
+    const double time, tbox::Pointer<tbox::Vector<double> > ele_vec,
     int entity_id, tbox::Array<hier::DoubleVector<NDIM> > U_val,
     tbox::Array<double> P_val, tbox::Array<double> T_val) {
   /// Done on 2026-04-15
@@ -1031,7 +1047,7 @@ void LinearPrism::buildFluidResidualElementVector(
     /// PSPG 稳定化参数
 //    double tau_pspg = (h_pspg * h_pspg) / (12.0 * mu_value);
 
-    /// (如果未来用于 N-S Jacobian，这里计算 tau_supg)
+    /// (未来用于 N-S Jacobian，这里计算 tau_supg)
     double tau_supg = 0.0;
     if (U_norm > 1e-12 && u_grad_N_sum > 1e-12) {
       h_supg = 2.0 * U_norm / u_grad_N_sum;
@@ -1041,7 +1057,20 @@ void LinearPrism::buildFluidResidualElementVector(
       // 纯扩散极限下，复用 h_pspg 作为特征尺度，避免截断为 0
       tau_supg = (h_pspg * h_pspg) / (4.0 * mu_value / rho);
     }
-    double tau_pspg = tau_supg / rho;
+    // 尝试 0.5, 0.2, 或者 0.1。值越小，中心峰值速度越高（越接近理论抛物线）
+    double tau_pspg_calc = (tau_supg / rho) * 0.02;
+
+    // 🌟 4. 终极护甲：PSPG 绝对下限（Floor Limiter）！
+    // 无论 h 有多小，tau_pspg 绝对不能低于这个保命值，否则矩阵死无全尸！
+    // 如果发现 MUMPS 还是挂，就把 1e-6 往上调到 1e-5 或 1e-4。
+    double min_tau_pspg = 1e-4;
+
+    // 强行取大值！
+    double tau_pspg = std::max(tau_pspg_calc, min_tau_pspg);
+    double tune_supg = 0.5e-1;
+    tau_supg *= tune_supg;
+    /// 强行压制PSPG
+
     /// 结束SUPG和PSPG参数的确定
     /// =========================================================
     /// 计算强形式动量残差
@@ -1055,6 +1084,12 @@ void LinearPrism::buildFluidResidualElementVector(
     double Mom_Rx = rho * (u_k * du_dx + v_k * du_dy + w_k * du_dz) + dp_dx;
     double Mom_Ry = rho * (u_k * dv_dx + v_k * dv_dy + w_k * dv_dz) + dp_dy;
     double Mom_Rz = rho * (u_k * dw_dx + v_k * dw_dy + w_k * dw_dz) + dp_dz;
+
+//    /// 修改为：(仅用于 SUPG 和 PSPG 的残差计算，主 Galerkin 残差绝对不要动！)
+//    /// 防止SUPG也出现psedo扩散
+//    Mom_Rx = rho * (u_k * du_dx + v_k * du_dy + w_k * du_dz);
+//    Mom_Ry = rho * (u_k * dv_dx + v_k * dv_dy + w_k * dv_dz);
+//    Mom_Rz = rho * (u_k * dw_dx + v_k * dw_dy + w_k * dw_dz);
 
     /// 连续性强残差: div(u)
     double div_u = du_dx + dv_dy + dw_dz;
@@ -1095,9 +1130,9 @@ void LinearPrism::buildFluidResidualElementVector(
       double supg_w = -JxW * tau_supg * U_dot_gradNi * Mom_Rz;
 
       /// 累加动量右端项
-      ele_vec[row_u] += diff_u + conv_u + gradp_u + supg_u;
-      ele_vec[row_v] += diff_v + conv_v + gradp_v + supg_v;
-      ele_vec[row_w] += diff_w + conv_w + gradp_w + supg_w;
+      (*ele_vec)[row_u] += diff_u + conv_u + gradp_u + supg_u;
+      (*ele_vec)[row_v] += diff_v + conv_v + gradp_v + supg_v;
+      (*ele_vec)[row_w] += diff_w + conv_w + gradp_w + supg_w;
 
       /// ----------------------------------------------------
       /// 2. 连续性方程 (压力 P) - 取【正残差】 (+R_p)
@@ -1109,7 +1144,7 @@ void LinearPrism::buildFluidResidualElementVector(
       double pspg_term = JxW * tau_pspg * (dNi_dx * Mom_Rx + dNi_dy * Mom_Ry + dNi_dz * Mom_Rz);
 
       /// 累加连续性方程右端项
-      ele_vec[row_p] += div_term + pspg_term;
+      (*ele_vec)[row_p] += div_term + pspg_term;
 
     }
   }

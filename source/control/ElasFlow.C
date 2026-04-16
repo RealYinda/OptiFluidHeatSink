@@ -253,7 +253,7 @@ int ElasFlow::advanceLevel(
   int max_newton_iter = 500;
   double current_error = 1.0;
   int iter = 0;
-  while (iter < max_newton_iter && current_error > 1e-6){
+  while (iter < max_newton_iter && current_error > 1e-8){
     d_alloc_fluid_data->allocatePatchData(patch_level, current_time + predict_dt);
     tbox::pout << "**************************";
     tbox::pout << "--- Newton-Raphson iteration number: " << iter << " ---" ;

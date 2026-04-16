@@ -253,7 +253,7 @@ public:
       tbox::Array<hier::DoubleVector<NDIM> > U_val);
   virtual void buildFluidResidualElementVector(
       tbox::Array<hier::DoubleVector<NDIM> > real_vertex, const double dt,
-      const double time, tbox::Array<double>& ele_vec,
+      const double time, tbox::Pointer<tbox::Vector<double> > ele_vec,
       int entity_id, tbox::Array<hier::DoubleVector<NDIM> > U_val,
       tbox::Array<double> P_val,tbox::Array<double> T_val);
   /**

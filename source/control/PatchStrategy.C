@@ -3678,7 +3678,7 @@ void PatchStrategy::applyFluidJacobianConstraint(hier::Patch<NDIM>& patch, const
   double* mat_val = mat_data->getValuePointer();
   double* vec_val = vec_data->getPointer();
 
-  int num_nodes = patch.getNumberOfNodes(1);
+  int num_nodes = patch.getNumberOfNodes(0);
 
   for (int node_id = 0; node_id < num_nodes; ++node_id){
     int bc_type = (*fluid_boundary)(0, node_id);
@@ -3784,9 +3784,11 @@ void PatchStrategy::buildFluidResidualRHSOnPatch(hier::Patch<NDIM>& patch,
     }
 
     /// 初始化单元局部 RHS 向量
-    tbox::Array<double> ele_vec(n_dof);
+
+    tbox::Pointer<tbox::Vector<double> > ele_vec = new tbox::Vector<double>();
+    ele_vec->resize(n_dof);
     for (int r = 0; r < n_dof; ++r) {
-      ele_vec[r] = 0.0;
+      (*ele_vec)[r] = 0.0;
     }
 
     /// 调用底层的残差高斯积分函数
@@ -3803,7 +3805,7 @@ void PatchStrategy::buildFluidResidualRHSOnPatch(hier::Patch<NDIM>& patch,
 
     /// 将局部残差累加到全局 RHS 向量
     for (int r = 0; r < n_dof; ++r) {
-      vec_val[mapping[r]] += ele_vec[r];
+      vec_data->addVectorValue(mapping[r], (*ele_vec)[r]);
     }
   }
 }

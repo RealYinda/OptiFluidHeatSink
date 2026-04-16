@@ -8,9 +8,9 @@
 #scale
 1e-3
 #in_filename
-Channel_debug.mphtxt
+Channel_debug2.mphtxt
 #out_filename
-Channel_debug.k
+Channel_debug2.k
 #BoundaryNum
 3
 #Boudary_Imformation

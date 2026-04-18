@@ -873,7 +873,8 @@ void LinearTet::buildTh_ElementMatrix(
  ************************************************************************/
 void LinearTet::buildStaticTh_ElementMatrix(
     tbox::Array<hier::DoubleVector<NDIM> > real_vertex, const double dt,
-    const double time, tbox::Pointer<tbox::Matrix<double> > ele_mat,int entity_id, tbox::Array<double> T_val)
+    const double time, tbox::Pointer<tbox::Matrix<double> > ele_mat,int entity_id, tbox::Array<double> T_val,
+    tbox::Array<hier::DoubleVector<NDIM> > U_val)
 {
   /// 取出积分器对象.
   tbox::Pointer<IntegratorManager<NDIM> > integrator_manager =
@@ -896,30 +897,8 @@ void LinearTet::buildStaticTh_ElementMatrix(
   double e_Temperature=0;
   for(int i=0;i<4;i++)
     e_Temperature+=T_val[i]/4;
-  tbox::Pointer<Material> material =
-      material_manager->getMaterial("Gold");
-  if(entity_id==1)
-    material =	material_manager->getMaterial("Silicon");
-  else if(entity_id==13)
-    material =	material_manager->getMaterial("MoCu");
-  else if(entity_id==2)
-    material =	material_manager->getMaterial("Copper");
-  else if(entity_id==4)
-    material =	material_manager->getMaterial("SiO2");
-  else if(entity_id==5)
-    material =	material_manager->getMaterial("SiN");
-  else if(entity_id==3)
-    material =	material_manager->getMaterial("Gold");
-  else if(entity_id==15)
-    material =	material_manager->getMaterial("GaN");
-  else if(entity_id==16)
-    material =	material_manager->getMaterial("Al2O3");
-  else if(entity_id==17)
-    material =	material_manager->getMaterial("Alloy");
-  else if(entity_id==6)
-    material =	material_manager->getMaterial("Aluminum");
-  else
-    material =	material_manager->getMaterial("Gold");
+  tbox::Pointer<Material> material
+      = material_manager->getMaterial(GET_USER_MAT(entity_id));
 
   /// 取出单元上自由度数目.
   int n_dof = shape_func->getNumberOfDof();
@@ -946,17 +925,63 @@ void LinearTet::buildStaticTh_ElementMatrix(
       shape_func->gradient(real_vertex, quad_pnt);
   tbox::Array<tbox::Array<double> > bas_val =
       shape_func->value(real_vertex, quad_pnt);
-
+  bool fluid_term = entity_id>100;
   double K=material->getK(e_Temperature);
+  double density = material->getDensity(e_Temperature);
+  double Cp = material->getCp(e_Temperature);
 
   /// 计算单元刚度矩阵.
-  for (int i = 0; i < n_dof; ++i) {
-    for (int j = 0; j < n_dof; ++j) {
-      for (int l = 0; l < num_quad_pnts; ++l) {
-        double JxW = volume * jac * weight[l];
-        (*ele_mat)(i,j) += JxW*((bas_grad[l][i][0]*bas_grad[l][j][0]+
+
+  for (int l = 0; l < num_quad_pnts; ++l) {
+    double JxW = volume * jac * weight[l];
+    /// 只有流体热要处理以下情形
+    double u_k = 0.0, v_k = 0.0, w_k = 0.0;
+    double tau_T = 0.0;
+    if (fluid_term) {
+        for (int m = 0; m < n_dof; ++m) {
+          u_k += bas_val[l][m] * U_val[m][0]; // U_val 是你传入的已收敛的流场速度
+          v_k += bas_val[l][m] * U_val[m][1];
+          w_k += bas_val[l][m] * U_val[m][2];
+        }
+        double U_norm = sqrt(u_k*u_k + v_k*v_k + w_k*w_k);
+        // 计算热学 SUPG 稳定化参数 (仅限流体)
+
+        if (fluid_term && U_norm > 1e-12) {
+          // 计算特征尺度 u_grad_N_sum (沿流线方向的网格尺度)
+          double u_grad_N_sum = 0.0;
+          for (int m = 0; m < n_dof; ++m) {
+            u_grad_N_sum += fabs(u_k * bas_grad[l][m][0] + v_k * bas_grad[l][m][1] + w_k * bas_grad[l][m][2]);
+          }
+
+          if (u_grad_N_sum > 1e-12) {
+            double h_supg = 2.0 * U_norm / u_grad_N_sum;
+            double alpha = K / (density * Cp); // 热扩散率
+            // 热学 SUPG 公式：对流极限 vs 扩散极限
+            tau_T = 1.0 / sqrt(pow(2.0 * U_norm / h_supg, 2.0) + pow(4.0 * alpha / (h_supg * h_supg), 2.0));
+            // 加上适当的缩放系数防止过度耗散 (类似流体力学)
+            double tune_thermal = 0.2;
+            tau_T = tau_T * tune_thermal;
+          }
+        }
+
+    }
+    for (int i = 0; i < n_dof; ++i) {
+      for (int j = 0; j < n_dof; ++j) {
+        double diff_ij = (bas_grad[l][i][0]*bas_grad[l][j][0]+
             bas_grad[l][i][1]*bas_grad[l][j][1]+
-            bas_grad[l][i][2]*bas_grad[l][j][2])*K);
+            bas_grad[l][i][2]*bas_grad[l][j][2])*K;
+        double conv_ij = 0.,supg_ij = 0.;
+        if (fluid_term){
+          double U_dot_gradNj = u_k * bas_grad[l][j][0]
+              + v_k * bas_grad[l][j][1]
+              + w_k * bas_grad[l][j][2];
+          double U_dot_gradNi = u_k * bas_grad[l][i][0]
+              + v_k * bas_grad[l][i][1]
+              + w_k * bas_grad[l][i][2];
+          conv_ij = density * Cp * bas_val[l][i] * U_dot_gradNj;
+          supg_ij = tau_T * (density * Cp * U_dot_gradNi) * (density * Cp * U_dot_gradNj);
+        }
+        (*ele_mat)(i,j) += JxW*(diff_ij + conv_ij + supg_ij);
       }
     }
   }

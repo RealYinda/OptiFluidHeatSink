@@ -288,9 +288,9 @@ void LinearPrism::buildTh_ElementMatrix(
   }
 }
 
-void LinearPrism::buildStaticTh_ElementMatrix(
-    tbox::Array<hier::DoubleVector<NDIM> > real_vertex, const double dt,
-    const double time, tbox::Pointer<tbox::Matrix<double> > ele_mat, int entity_id, tbox::Array<double> T_val) {
+void LinearPrism::buildStaticTh_ElementMatrix(tbox::Array<hier::DoubleVector<NDIM> > real_vertex, const double dt,
+                                              const double time, tbox::Pointer<tbox::Matrix<double> > ele_mat, int entity_id, tbox::Array<double> T_val,
+                                              tbox::Array<hier::DoubleVector<NDIM> > U_val) {
   // TODO: 由用户实现稳态热传导矩阵
   /// Done on 2026-04-01
   /// 取出三棱柱积分器对象
@@ -337,26 +337,69 @@ void LinearPrism::buildStaticTh_ElementMatrix(
   /// 在Prism里和单纯型完全不同！
   tbox::Array<tbox::Array<tbox::Array<double> > > bas_grad =
       shape_func->gradient(real_vertex, local_quad_pnt);
-
-  /// 根据平均温度获取当前材料的热导率 K
-  double K = material->getK(e_Temperature);
+  tbox::Array<tbox::Array<double> > bas_val =
+      shape_func->value(real_vertex, local_quad_pnt);
+  bool fluid_term = entity_id>100;
+  double K=material->getK(e_Temperature);
+  double density = material->getDensity(e_Temperature);
+  double Cp = material->getCp(e_Temperature);
 
   for (int l = 0; l < num_quad_pnts; ++l){
     double detJ = calcDynamicDetJ(real_vertex, local_quad_pnt[l]);
     // 计算当前积分点的体积微元
     double JxW = detJ * weight[l];
+    /// 只有流体热要处理以下情形
+    double u_k = 0.0, v_k = 0.0, w_k = 0.0;
+    double tau_T = 0.0;
+    if (fluid_term) {
+      for (int m = 0; m < n_dof; ++m) {
+        u_k += bas_val[l][m] * U_val[m][0]; // U_val 是你传入的已收敛的流场速度
+        v_k += bas_val[l][m] * U_val[m][1];
+        w_k += bas_val[l][m] * U_val[m][2];
+      }
+      double U_norm = sqrt(u_k*u_k + v_k*v_k + w_k*w_k);
+      // 计算热学 SUPG 稳定化参数 (仅限流体)
+
+      if (fluid_term && U_norm > 1e-12) {
+        // 计算特征尺度 u_grad_N_sum (沿流线方向的网格尺度)
+        double u_grad_N_sum = 0.0;
+        for (int m = 0; m < n_dof; ++m) {
+          u_grad_N_sum += fabs(u_k * bas_grad[l][m][0] + v_k * bas_grad[l][m][1] + w_k * bas_grad[l][m][2]);
+        }
+
+        if (u_grad_N_sum > 1e-12) {
+          double h_supg = 2.0 * U_norm / u_grad_N_sum;
+          double alpha = K / (density * Cp); // 热扩散率
+          // 热学 SUPG 公式：对流极限 vs 扩散极限
+          tau_T = 1.0 / sqrt(pow(2.0 * U_norm / h_supg, 2.0) + pow(4.0 * alpha / (h_supg * h_supg), 2.0));
+          // 加上适当的缩放系数防止过度耗散 (类似流体力学)
+          double tune_thermal = 0.2;
+          tau_T = tau_T * tune_thermal;
+        }
+      }
+
+    }
     // 将刚度项累加到单元矩阵中
     for (int i = 0; i < n_dof; ++i) {
       for (int j = 0; j < n_dof; ++j) {
-        (*ele_mat)(i, j) += JxW * ((bas_grad[l][i][0] * bas_grad[l][j][0] +
-            bas_grad[l][i][1] * bas_grad[l][j][1] +
-            bas_grad[l][i][2] * bas_grad[l][j][2]) * K);
+        double diff_ij = (bas_grad[l][i][0]*bas_grad[l][j][0]+
+            bas_grad[l][i][1]*bas_grad[l][j][1]+
+            bas_grad[l][i][2]*bas_grad[l][j][2])*K;
+        double conv_ij = 0.,supg_ij = 0.;
+        if (fluid_term){
+          double U_dot_gradNj = u_k * bas_grad[l][j][0]
+              + v_k * bas_grad[l][j][1]
+              + w_k * bas_grad[l][j][2];
+          double U_dot_gradNi = u_k * bas_grad[l][i][0]
+              + v_k * bas_grad[l][i][1]
+              + w_k * bas_grad[l][i][2];
+          conv_ij = density * Cp * bas_val[l][i] * U_dot_gradNj;
+          supg_ij = tau_T * (density * Cp * U_dot_gradNi) * (density * Cp * U_dot_gradNj);
+        }
+        (*ele_mat)(i, j) += JxW*(diff_ij + conv_ij + supg_ij);
       }
     }
-
-
   }
-
 }
 
 void LinearPrism::buildTh_ElementRHS(
@@ -781,7 +824,7 @@ void LinearPrism::buildFluidJacobianElementMatrix(
     // 🌟 4. 终极护甲：PSPG 绝对下限（Floor Limiter）！
     // 无论 h 有多小，tau_pspg 绝对不能低于这个保命值，否则矩阵死无全尸！
     // 如果发现 MUMPS 还是挂，就把 1e-6 往上调到 1e-5 或 1e-4。
-    double min_tau_pspg = 1e-4;
+    double min_tau_pspg = 1e-13;
 
     // 强行取大值！
     double tau_pspg = std::max(tau_pspg_calc, min_tau_pspg);
@@ -1060,10 +1103,10 @@ void LinearPrism::buildFluidResidualElementVector(
     // 尝试 0.5, 0.2, 或者 0.1。值越小，中心峰值速度越高（越接近理论抛物线）
     double tau_pspg_calc = (tau_supg / rho) * 0.02;
 
-    // 🌟 4. 终极护甲：PSPG 绝对下限（Floor Limiter）！
+    // 4. 终极护甲：PSPG 绝对下限（Floor Limiter）！
     // 无论 h 有多小，tau_pspg 绝对不能低于这个保命值，否则矩阵死无全尸！
     // 如果发现 MUMPS 还是挂，就把 1e-6 往上调到 1e-5 或 1e-4。
-    double min_tau_pspg = 1e-4;
+    double min_tau_pspg = 1e-13;
 
     // 强行取大值！
     double tau_pspg = std::max(tau_pspg_calc, min_tau_pspg);

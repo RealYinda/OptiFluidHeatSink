@@ -171,7 +171,8 @@ public:
    */
   virtual void buildStaticTh_ElementMatrix(
       tbox::Array<hier::DoubleVector<NDIM> > real_vertex, const double dt,
-      const double time, tbox::Pointer<tbox::Matrix<double> > ele_mat,int entity_id,tbox::Array<double> T_val);
+      const double time, tbox::Pointer<tbox::Matrix<double> > ele_mat,int entity_id,tbox::Array<double> T_val,
+      tbox::Array<hier::DoubleVector<NDIM> > U_val);
 
   /**
    * @brief 计算热求解单元右端项.

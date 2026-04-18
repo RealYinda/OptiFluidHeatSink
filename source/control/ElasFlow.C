@@ -290,14 +290,15 @@ int ElasFlow::advanceLevel(
 
 
 
-  tbox::pout << "**************************";
-  tbox::pout << "电场方程求解中";
-  tbox::pout << "**************************"<<endl;
+
   t_fem_solve->start();
   double max[3]={0,0,0};
 #if ELECTRIC_COMPUTATION
   ///////////////////////////////////////////////////////////////////////////////////////////
   //update #9 电计算
+  tbox::pout << "**************************";
+  tbox::pout << "电场方程求解中";
+  tbox::pout << "**************************"<<endl;
   E_num_intc_mat->computing(patch_level, current_time, actual_dt);
   /// 调用数值构件接口函数,加载约束
   E_num_intc_cons->computing(patch_level, current_time, actual_dt);

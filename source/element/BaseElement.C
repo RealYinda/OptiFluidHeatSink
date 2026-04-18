@@ -156,7 +156,8 @@ void BaseElement<DIM>::buildTh_ElementMatrix(
 template <int DIM>
 void BaseElement<DIM>::buildStaticTh_ElementMatrix(
     tbox::Array<hier::DoubleVector<NDIM> > real_vertex, const double dt,
-    const double time, tbox::Pointer<tbox::Matrix<double> > ele_mat,int entity_id, tbox::Array<double> T_val)
+    const double time, tbox::Pointer<tbox::Matrix<double> > ele_mat,int entity_id, tbox::Array<double> T_val,
+    tbox::Array<hier::DoubleVector<NDIM> > U_val)
 {
   TBOX_WARNING(
         "Function buildStaticTh_ElementMatrix is not implemented, please make sure your code "

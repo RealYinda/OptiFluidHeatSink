@@ -118,7 +118,7 @@ solver_name = "petsc_solver"
 
 GridGeometry {
     MeshImportationParameter{
-        file_name = "../model/Channel_debug.k"
+        file_name = "../model/Channel_debug2.k"
         refine_times = 0
     }
 }

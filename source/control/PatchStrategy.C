@@ -2566,6 +2566,8 @@ void PatchStrategy::applyTh_Constraint(hier::Patch<NDIM>& patch,
   patch.getPatchTopology()->getFaceAdjacencyNodes(face_node_ext,face_node_idx);
   tbox::Pointer<pdat::NodeData<NDIM, double> > node_coord =
       patch_geo->getNodeCoordinates();
+  GET_PATCH_DATA(patch, fluid_boundary, boundary_fluid_di_id, Node, int);
+
 
   for (int conv_id = 0; conv_id < d_convection_boundary.size(); conv_id++){
     double conv_coef = 20.;
@@ -2687,6 +2689,25 @@ void PatchStrategy::applyTh_Constraint(hier::Patch<NDIM>& patch,
         }
       }
     }
+  }
+  for (int node_id = 0; node_id < num_nodes; ++node_id){
+    int bc_type = (*fluid_boundary)(0, node_id);
+    if (bc_type == 1) {
+      // 入口 (Inlet)
+      int index = dof_map[node_id];
+      vec_val[index] =293.15; /**< 载荷项设为 0 */
+      /// 对角化 1 法处理约束，并保持矩阵对称
+      for (int j = row_start[index]; j < row_start[index + 1]; ++j) {
+        if (col_idx[j] == index) {
+          mat_val[j] = 1.0;
+        } else {
+          mat_val[j] = 0.0;
+          vec_val[col_idx[j]] -= (*mat_data)(col_idx[j], index) * vec_val[index];
+          (*mat_data)(col_idx[j], index) = 0.0;
+        }
+      }
+    }
+
   }
 }
 
@@ -2843,6 +2864,7 @@ void PatchStrategy::buildTh_MatrixOnPatch(hier::Patch<NDIM>& patch,
   //取前一步的温度分布
   tbox::Pointer<pdat::NodeData<NDIM, double> > T_data =
       patch.getPatchData(th_Told_id);//
+  GET_PATCH_DATA(patch, velocity_node, F_vel_plot_id, Node, double);
 
   /// 获取本地单元(边, 面)周围结点的索引关系.
   tbox::Array<int> can_extent, can_indices;
@@ -2858,12 +2880,16 @@ void PatchStrategy::buildTh_MatrixOnPatch(hier::Patch<NDIM>& patch,
     tbox::Array<hier::DoubleVector<NDIM> > vertex(n_vertex);
     tbox::Array<int> mapping(n_vertex);
     tbox::Array<double> T_val(n_vertex);
+    tbox::Array<hier::DoubleVector<NDIM> > U_val(n_vertex);
     /// 取出单元结点坐标，以及填写映射值。//can_indices 节点编号
     for (int i1 = 0, j = can_extent[i]; i1 < n_vertex; ++i1, ++j) {
       mapping[i1] = dof_map[can_indices[j]];
       T_val[i1]=T_data->getPointer()[can_indices[j]];
       for (int k = 0; k < NDIM; ++k) {
         vertex[i1][k] = (*node_coord)(k, can_indices[j]);
+        /// 流体热传导需要拿到温度场的数据
+        U_val[i1][k] = (*velocity_node)(k, can_indices[j]);
+
       }
     }
     /// 初始化单元矩阵

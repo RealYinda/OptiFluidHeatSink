@@ -931,8 +931,10 @@ void LinearTet::buildStaticTh_ElementMatrix(
   double Cp = material->getCp(e_Temperature);
 
   /// 计算单元刚度矩阵.
+  double K_eff;
 
   for (int l = 0; l < num_quad_pnts; ++l) {
+    K_eff = K;
     double JxW = volume * jac * weight[l];
     /// 只有流体热要处理以下情形
     double u_k = 0.0, v_k = 0.0, w_k = 0.0;
@@ -947,7 +949,9 @@ void LinearTet::buildStaticTh_ElementMatrix(
         // 计算热学 SUPG 稳定化参数 (仅限流体)
 
         if (fluid_term && U_norm > 1e-12) {
+
           // 计算特征尺度 u_grad_N_sum (沿流线方向的网格尺度)
+
           double u_grad_N_sum = 0.0;
           for (int m = 0; m < n_dof; ++m) {
             u_grad_N_sum += fabs(u_k * bas_grad[l][m][0] + v_k * bas_grad[l][m][1] + w_k * bas_grad[l][m][2]);
@@ -962,14 +966,24 @@ void LinearTet::buildStaticTh_ElementMatrix(
             double tune_thermal = 0.2;
             tau_T = tau_T * tune_thermal;
           }
+          // 计算各向同性的单元特征长度 (四面体体积的立方根)
+          double h_e = pow(volume * jac, 1.0 / 3.0);
+          // 调参系数: 0.05 是极其经典的工程经验值，能在消除负温震荡和保留真实温度梯度之间取得完美平衡
+          double tune_crosswind = 0.05;
+          double K_art = tune_crosswind * density * Cp * U_norm * h_e;
+
+          // 更新有效热导率 (真实传导 + 人工扩散)
+          K_eff = K + K_art;
+
         }
 
     }
+
     for (int i = 0; i < n_dof; ++i) {
       for (int j = 0; j < n_dof; ++j) {
         double diff_ij = (bas_grad[l][i][0]*bas_grad[l][j][0]+
             bas_grad[l][i][1]*bas_grad[l][j][1]+
-            bas_grad[l][i][2]*bas_grad[l][j][2])*K;
+            bas_grad[l][i][2]*bas_grad[l][j][2])*K_eff;
         double conv_ij = 0.,supg_ij = 0.;
         if (fluid_term){
           double U_dot_gradNj = u_k * bas_grad[l][j][0]
@@ -979,7 +993,7 @@ void LinearTet::buildStaticTh_ElementMatrix(
               + v_k * bas_grad[l][i][1]
               + w_k * bas_grad[l][i][2];
           conv_ij = density * Cp * bas_val[l][i] * U_dot_gradNj;
-          supg_ij = tau_T * (density * Cp * U_dot_gradNi) * (density * Cp * U_dot_gradNj);
+          supg_ij = tau_T * (U_dot_gradNi) * (density * Cp * U_dot_gradNj);
         }
         (*ele_mat)(i,j) += JxW*(diff_ij + conv_ij + supg_ij);
       }

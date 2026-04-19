@@ -2570,7 +2570,7 @@ void PatchStrategy::applyTh_Constraint(hier::Patch<NDIM>& patch,
 
 
   for (int conv_id = 0; conv_id < d_convection_boundary.size(); conv_id++){
-    double conv_coef = 20.;
+    double conv_coef = 15.;
     double Text = 293.15;
     if (patch_geo->hasEntitySet(d_convection_boundary[conv_id],
                                 hier::EntityUtilities::FACE,patch.getNumberOfFaces(1))){
@@ -2892,6 +2892,7 @@ void PatchStrategy::buildTh_MatrixOnPatch(hier::Patch<NDIM>& patch,
 
       }
     }
+
     /// 初始化单元矩阵
     tbox::Pointer<tbox::Matrix<double> > ele_mat = new tbox::Matrix<double>();
     ele_mat->resize(n_vertex, n_vertex);
@@ -2917,7 +2918,7 @@ void PatchStrategy::buildTh_MatrixOnPatch(hier::Patch<NDIM>& patch,
     if(d_is_time_domain_solve)
       ele->buildTh_ElementMatrix(vertex, dt, time, ele_mat,(*materialid_data)(0,cell),T_val);
     else
-      ele->buildStaticTh_ElementMatrix(vertex, dt, time, ele_mat,(*materialid_data)(0,cell),T_val);
+      ele->buildStaticTh_ElementMatrix(vertex, dt, time, ele_mat,(*materialid_data)(0,cell),T_val,U_val);
 
     /// 累加单元矩阵，这里用户根据映射将矩阵挨个添加。
     int row = 0, col = 0;

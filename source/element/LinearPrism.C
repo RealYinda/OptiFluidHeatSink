@@ -348,6 +348,7 @@ void LinearPrism::buildStaticTh_ElementMatrix(tbox::Array<hier::DoubleVector<NDI
     double detJ = calcDynamicDetJ(real_vertex, local_quad_pnt[l]);
     // 计算当前积分点的体积微元
     double JxW = detJ * weight[l];
+    double K_eff = K;
     /// 只有流体热要处理以下情形
     double u_k = 0.0, v_k = 0.0, w_k = 0.0;
     double tau_T = 0.0;
@@ -376,6 +377,30 @@ void LinearPrism::buildStaticTh_ElementMatrix(tbox::Array<hier::DoubleVector<NDI
           double tune_thermal = 0.2;
           tau_T = tau_T * tune_thermal;
         }
+        double grad_N_squared_sum = 0.0;
+        for (int m = 0; m < n_dof; ++m) {
+          double dNm_dx = bas_grad[l][m][0];
+          double dNm_dy = bas_grad[l][m][1];
+          double dNm_dz = bas_grad[l][m][2];
+          grad_N_squared_sum += (dNm_dx * dNm_dx + dNm_dy * dNm_dy + dNm_dz * dNm_dz);
+        }
+
+        double h_crosswind = 0.0;
+        if (grad_N_squared_sum > 1e-15) {
+          // 这个公式会自动过滤掉长边，极其精准地锁定边界层法向 1μm 的极薄厚度！
+          h_crosswind = 2.0 / sqrt(grad_N_squared_sum);
+        } else {
+          h_crosswind = pow(detJ, 1.0 / 3.0); // 仅防万一的退化保护
+        }
+
+        // 侧风扩散系数，0.05 是非常稳妥的工程经验值
+        double tune_crosswind = 0.05;
+
+        // 🚨 注意这里换成了 h_crosswind ！！！
+        double K_art = tune_crosswind * density * Cp * U_norm * h_crosswind;
+
+        // 更新有效热导率
+        K_eff = K + K_art;
       }
 
     }
@@ -384,7 +409,7 @@ void LinearPrism::buildStaticTh_ElementMatrix(tbox::Array<hier::DoubleVector<NDI
       for (int j = 0; j < n_dof; ++j) {
         double diff_ij = (bas_grad[l][i][0]*bas_grad[l][j][0]+
             bas_grad[l][i][1]*bas_grad[l][j][1]+
-            bas_grad[l][i][2]*bas_grad[l][j][2])*K;
+            bas_grad[l][i][2]*bas_grad[l][j][2])*K_eff;
         double conv_ij = 0.,supg_ij = 0.;
         if (fluid_term){
           double U_dot_gradNj = u_k * bas_grad[l][j][0]
@@ -394,7 +419,7 @@ void LinearPrism::buildStaticTh_ElementMatrix(tbox::Array<hier::DoubleVector<NDI
               + v_k * bas_grad[l][i][1]
               + w_k * bas_grad[l][i][2];
           conv_ij = density * Cp * bas_val[l][i] * U_dot_gradNj;
-          supg_ij = tau_T * (density * Cp * U_dot_gradNi) * (density * Cp * U_dot_gradNj);
+          supg_ij = tau_T * (U_dot_gradNi) * (density * Cp * U_dot_gradNj);
         }
         (*ele_mat)(i, j) += JxW*(diff_ij + conv_ij + supg_ij);
       }

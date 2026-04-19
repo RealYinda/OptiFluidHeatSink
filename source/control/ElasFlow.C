@@ -40,7 +40,7 @@ ElasFlow::ElasFlow(
   d_solver_s = d_solver_manager->lookupLinearSolver(
         d_solver_db->getDatabase ("SolverT")->getString("solver_name"));
   d_solver_th = d_solver_manager->lookupLinearSolver(
-        d_solver_db->getDatabase ("SolverTH")->getString("solver_name"));
+        d_solver_db->getDatabase ("SolverTH2")->getString("solver_name"));
   d_solver_E = d_solver_manager->lookupLinearSolver(
         d_solver_db->getDatabase ("SolverE")->getString("solver_name"));
   d_solver_F = d_solver_manager->lookupLinearSolver(
@@ -347,7 +347,7 @@ int ElasFlow::advanceLevel(
 
   d_solver_th->setMatrix(mat_id_th);
   d_solver_th->setRHS(vec_id_th);
-  d_solver_th->solve(first_step, sol_id_th, patch_level, d_solver_db->getDatabase ("SolverTH"));
+  d_solver_th->solve(first_step, sol_id_th, patch_level, d_solver_db->getDatabase ("SolverTH2"));
   tbox::pout<<"结束热传导方程计算，正在进行后处理 "<<endl;
   th_num_intc_plot->computing(patch_level, current_time, actual_dt, false);
   d_Max_T_intc->reduction(&max[0], 1, patch_level, current_time, actual_dt);

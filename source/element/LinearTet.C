@@ -1473,6 +1473,7 @@ void LinearTet::buildInitFluidElementMatrix(
       }
     }
     double mu_value = (*mu);
+     double rho = material->getDensity(e_Temperature);
 
     int num_quad_pnts = integrator->getNumberOfQuadraturePoints();
     double volume = integrator->getElementVolume();
@@ -1486,31 +1487,66 @@ void LinearTet::buildInitFluidElementMatrix(
     tbox::Array<tbox::Array<double> > bas_val =
         shape_func->value(real_vertex, quad_pnt);
     /// 计算 PSPG 稳定化参数 tau
-    /// 正确计算单元的真实物理体积
-    double real_volume = volume * jac;
-    /// 特征长度 h_e 粗略估计为体积的立方根
-    double h_e = pow(real_volume, 1.0 / 3.0);
 
-    double tau_pspg = (h_e * h_e) / (12.0 * mu_value); // 经典的 Stokes 稳定化时间尺度
-    for (int i = 0; i < n_nodes; ++i) {
-      for (int j = 0; j < n_nodes; ++j) {
-        // 预先计算出局部块的行列索引，体现节点交替 [u, v, w, p]
-        int row_u = i * (NDIM + 1) + 0;
-        int row_v = i * (NDIM + 1) + 1;
-        int row_w = i * (NDIM + 1) + 2;
-        int row_p = i * (NDIM + 1) + 3;
 
-        int col_u = j * (NDIM + 1) + 0;
-        int col_v = j * (NDIM + 1) + 1;
-        int col_w = j * (NDIM + 1) + 2;
-        int col_p = j * (NDIM + 1) + 3;
 
-        for (int l = 0; l < num_quad_pnts; ++l) {
-          double JxW = volume * jac * weight[l];
+    for (int l = 0; l < num_quad_pnts; ++l) {
+      double JxW = volume * jac * weight[l];
+      /// 3. Shakib-Hughes 动态各向异性特征长度与 PSPG/SUPG 稳定化
+      double u_k = 0.0, v_k = 0.0, w_k = 0.0;
+      double U_norm = sqrt(u_k * u_k + v_k * v_k + w_k * w_k);
 
+      double u_grad_N_sum = 0.0;
+      double grad_N_squared_sum = 0.0;
+      for (int m = 0; m < n_nodes ; ++m) {
+        double dNm_dx = bas_grad[l][m][0];
+        double dNm_dy = bas_grad[l][m][1];
+        double dNm_dz = bas_grad[l][m][2];
+
+        u_grad_N_sum += fabs(u_k * dNm_dx + v_k * dNm_dy + w_k * dNm_dz);
+        grad_N_squared_sum += (dNm_dx * dNm_dx + dNm_dy * dNm_dy + dNm_dz * dNm_dz);
+      }
+
+      double h_supg = 0.0;
+      double h_pspg = 0.0;
+      /// 对于压力连续性方程，它不具备流动方向性偏好，
+      /// 使用基于形函数几何梯度的调和平均，自动捕捉三棱柱的“最短边（厚度）”作为防过度耗散的基准尺度
+      if (grad_N_squared_sum > 1e-15) {
+        h_pspg = 2.0 / sqrt(grad_N_squared_sum);
+      } else {
+        h_pspg = pow(volume * jac, 1.0 / 3.0); // 极小概率退化保护
+      }
+      /// PSPG 稳定化参数
+      double tau_pspg = 0.01*(h_pspg * h_pspg) / (12.0 * mu_value);
+
+      /// (如果未来用于 N-S Jacobian，这里计算 tau_supg)
+      double tau_supg = 0.0;
+      if (U_norm > 1e-12 && u_grad_N_sum > 1e-12) {
+        h_supg = 2.0 * U_norm / u_grad_N_sum;
+        tau_supg = 1.0 / sqrt(pow(2.0 * U_norm / h_supg, 2.0) + pow(4.0 * mu_value / (rho * h_supg * h_supg), 2.0));
+      }
+      else {
+        // 纯扩散极限下，复用 h_pspg 作为特征尺度，避免截断为 0
+        tau_supg = (h_pspg * h_pspg) / (4.0 * mu_value / rho);
+      }
+      // 尝试 0.5, 0.2, 或者 0.1。值越小，中心峰值速度越高（越接近理论抛物线）
+      double tune_supg = 0.5e-1;
+      tau_supg *= tune_supg;
+      for (int i = 0; i < n_nodes; ++i) {
+        for (int j = 0; j < n_nodes; ++j) {
+          // 预先计算出局部块的行列索引，体现节点交替 [u, v, w, p]
+          int row_u = i * (NDIM + 1) + 0;
+          int row_v = i * (NDIM + 1) + 1;
+          int row_w = i * (NDIM + 1) + 2;
+          int row_p = i * (NDIM + 1) + 3;
+
+          int col_u = j * (NDIM + 1) + 0;
+          int col_v = j * (NDIM + 1) + 1;
+          int col_w = j * (NDIM + 1) + 2;
+          int col_p = j * (NDIM + 1) + 3;
           /** ----------------------------------------------------
-            粘性扩散矩阵 K_mu: mu * \int (\nabla N_i \cdot \nabla N_j)
-            ----------------------------------------------------**/
+                粘性扩散矩阵 K_mu: mu * \int (\nabla N_i \cdot \nabla N_j)
+                ----------------------------------------------------**/
           double diff = JxW * mu_value * (bas_grad[l][i][0] * bas_grad[l][j][0] +
               bas_grad[l][i][1] * bas_grad[l][j][1] +
               bas_grad[l][i][2] * bas_grad[l][j][2]);
@@ -1561,7 +1597,12 @@ void LinearTet::buildInitFluidElementMatrix(
           (*ele_mat)(row_p, col_p) += pspg;
         }
       }
+
+
+
     }
+
+
 }
 /*************************************************************************
  * 计算 N-S 方程的牛顿雅可比矩阵 (Newton Jacobian Matrix)
@@ -1632,17 +1673,58 @@ void LinearTet::buildFluidJacobianElementMatrix(
       dw_dx += dNm_dx * U_val[m][2]; dw_dy += dNm_dy * U_val[m][2]; dw_dz += dNm_dz * U_val[m][2];
     }
     double U_norm = sqrt(u_k * u_k + v_k * v_k + w_k * w_k);
+    double u_grad_N_sum = 0.0;
+    double grad_N_squared_sum = 0.0;
 
-    /// PSPG 稳定化系数
-    double tau_pspg = (h_e * h_e) / (12.0 * mu);
+    for (int m = 0; m < n_nodes; ++m) {
+      double dNm_dx = bas_grad[l][m][0];
+      double dNm_dy = bas_grad[l][m][1];
+      double dNm_dz = bas_grad[l][m][2];
 
-    /// SUPG 稳定化系数 (考虑对流与扩散的调和)
-    double tau_supg = 0.0;
-    if (U_norm > 1e-12) {
-      tau_supg = 1.0 / sqrt(pow(2.0 * U_norm / h_e, 2.0) + pow(4.0 * mu / (rho * h_e * h_e), 2.0));
-    } else {
-      tau_supg = (h_e * h_e) / (4.0 * mu / rho);
+      // 核心：完整的流速向量 与 当前节点形函数梯度的内积 的绝对值
+      u_grad_N_sum += fabs(u_k * dNm_dx + v_k * dNm_dy + w_k * dNm_dz);
+
+      // 顺便把 PSPG 需要的纯几何对角线也累加了
+      grad_N_squared_sum += (dNm_dx * dNm_dx + dNm_dy * dNm_dy + dNm_dz * dNm_dz);
     }
+
+    double h_supg = 0.0;
+    double h_pspg = 0.0;
+    /// 对于压力连续性方程，它不具备流动方向性偏好，
+    /// 使用基于形函数几何梯度的调和平均，自动捕捉三棱柱的“最短边（厚度）”作为防过度耗散的基准尺度
+    if (grad_N_squared_sum > 1e-15) {
+      h_pspg = 2.0 / sqrt(grad_N_squared_sum);
+    } else {
+      h_pspg = pow(volume * jac, 1.0 / 3.0); // 极小概率退化保护
+    }
+
+    /// PSPG 稳定化参数
+    //    double tau_pspg = (h_pspg * h_pspg) / (12.0 * mu_value);
+
+    /// (用于 N-S Jacobian，这里计算 tau_supg)
+    double tau_supg = 0.0;
+    if (U_norm > 1e-12 && u_grad_N_sum > 1e-12) {
+      h_supg = 2.0 * U_norm / u_grad_N_sum;
+      tau_supg = 1.0 / sqrt(pow(2.0 * U_norm / h_supg, 2.0) + pow(4.0 * mu / (rho * h_supg * h_supg), 2.0));
+    }
+    else {
+      // 纯扩散极限下，复用 h_pspg 作为特征尺度，避免截断为 0
+      tau_supg = (h_pspg * h_pspg) / (4.0 * mu / rho);
+    }
+    double tau_pspg_calc = (tau_supg / rho) * 0.02;
+
+    // 🌟 4. 终极护甲：PSPG 绝对下限（Floor Limiter）！
+    // 无论 h 有多小，tau_pspg 绝对不能低于这个保命值，否则矩阵死无全尸！
+    // 如果发现 MUMPS 还是挂，就把 1e-6 往上调到 1e-5 或 1e-4。
+    double min_tau_pspg = 1e-13;
+
+    // 强行取大值！
+    double tau_pspg = std::max(tau_pspg_calc, min_tau_pspg);
+    // 尝试 0.5, 0.2, 或者 0.1。值越小，中心峰值速度越高（越接近理论抛物线）
+    double tune_supg = 0.5e-1;
+    tau_supg *= tune_supg;
+    /// 强行压制PSPG
+    ///
     /// 组装矩阵
     for(int i = 0; i < n_nodes; ++i){
       double Ni = bas_val[l][i];
@@ -1684,6 +1766,11 @@ void LinearTet::buildFluidJacobianElementMatrix(
         double conv_uu = rho_Ni * (U_dot_gradNj + Nj * du_dx);
         double conv_vv = rho_Ni * (U_dot_gradNj + Nj * dv_dy);
         double conv_ww = rho_Ni * (U_dot_gradNj + Nj * dw_dz);
+#if PICARD
+        conv_uu = rho_Ni * U_dot_gradNj;
+        conv_vv = rho_Ni * U_dot_gradNj;
+        conv_ww = rho_Ni * U_dot_gradNj;
+#endif
 
         // 非对角交叉块 (\delta u 在其他方向上的梯度扰动)
         double conv_uv = rho_Ni * Nj * du_dy;  // v_j 扰动 u 方程
@@ -1694,6 +1781,14 @@ void LinearTet::buildFluidJacobianElementMatrix(
 
         double conv_wu = rho_Ni * Nj * dw_dx;  // u_j 扰动 w 方程
         double conv_wv = rho_Ni * Nj * dw_dy;  // v_j 扰动 w 方程
+#if PICARD
+        conv_uv = 0.0;
+        conv_uw = 0.0;
+        conv_vu = 0.0;
+        conv_vw = 0.0;
+        conv_wu = 0.0;
+        conv_wv = 0.0;
+#endif
         /// ----------------------------------------------------
         /// SUPG & PSPG 稳定化项
         /// ----------------------------------------------------
@@ -1716,12 +1811,35 @@ void LinearTet::buildFluidJacobianElementMatrix(
         double supg_vw = supg_conv_base * (Nj * dv_dz);
         double supg_wu = supg_conv_base * (Nj * dw_dx);
         double supg_wv = supg_conv_base * (Nj * dw_dy);
+#if PICARD
+        supg_uu = supg_conv_base * (U_dot_gradNj );
+        supg_vv = supg_conv_base * (U_dot_gradNj );
+        supg_ww = supg_conv_base * (U_dot_gradNj );
+
+        supg_uv = 0;
+        supg_uw = 0;
+        supg_vu = 0;
+        supg_vw = 0;
+        supg_wu = 0;
+        supg_wv = 0;
+#endif
 
         // SUPG 压力梯度项
         // \int \tau_{supg} (U^k \cdot \nabla N_i) * \nabla N_j
         double supg_p_x = JxW * tau_supg * U_dot_gradNi * dNj_dx;
         double supg_p_y = JxW * tau_supg * U_dot_gradNi * dNj_dy;
         double supg_p_z = JxW * tau_supg * U_dot_gradNi * dNj_dz;
+
+        // 补全 PSPG 对 U, V, W 的交叉偏导数
+        /// gemini让加的不知道对不对
+        double pspg_u = -JxW * tau_pspg * rho * (dNi_dx * (Nj * du_dx + U_dot_gradNj) + dNi_dy * (Nj * dv_dx) + dNi_dz * (Nj * dw_dx));
+        double pspg_v = -JxW * tau_pspg * rho * (dNi_dx * (Nj * du_dy) + dNi_dy * (Nj * dv_dy + U_dot_gradNj) + dNi_dz * (Nj * dw_dy));
+        double pspg_w = -JxW * tau_pspg * rho * (dNi_dx * (Nj * du_dz) + dNi_dy * (Nj * dv_dz) + dNi_dz * (Nj * dw_dz + U_dot_gradNj));
+#if PICARD
+        pspg_u = 0;
+        pspg_v = 0;
+        pspg_w = 0;
+#endif
 
 
         /// ----------------------------------------------------
@@ -1747,9 +1865,14 @@ void LinearTet::buildFluidJacobianElementMatrix(
         (*ele_mat)(row_w, col_p) += G_z + supg_p_z;
 
         // --- 连续性方程 ---
-        (*ele_mat)(row_p, col_u) += D_x;
-        (*ele_mat)(row_p, col_v) += D_y;
-        (*ele_mat)(row_p, col_w) += D_z;
+        //        (*ele_mat)(row_p, col_u) += D_x;
+        //        (*ele_mat)(row_p, col_v) += D_y;
+        //        (*ele_mat)(row_p, col_w) += D_z;
+        //        (*ele_mat)(row_p, col_p) += pspg;
+        // --- 连续性方程 --- (替换你原来的这部分)
+        (*ele_mat)(row_p, col_u) += D_x + pspg_u; // 加上了 pspg_u
+        (*ele_mat)(row_p, col_v) += D_y + pspg_v; // 加上了 pspg_v
+        (*ele_mat)(row_p, col_w) += D_z + pspg_w; // 加上了 pspg_w
         (*ele_mat)(row_p, col_p) += pspg;
 
       }
@@ -1836,13 +1959,62 @@ void LinearTet::buildFluidResidualElementVector(
     /// 步骤 C：计算稳定化参数
     /// =========================================================
     double U_norm = sqrt(u_k * u_k + v_k * v_k + w_k * w_k);
-    double tau_pspg = (h_e * h_e) / (12.0 * mu);
-    double tau_supg = 0.0;
-    if (U_norm > 1e-12) {
-      tau_supg = 1.0 / sqrt(pow(2.0 * U_norm / h_e, 2.0) + pow(4.0 * mu / (rho * h_e * h_e), 2.0));
-    } else {
-      tau_supg = (h_e * h_e) / (4.0 * mu / rho);
+    /// ====================================================================
+    /// 第 2 步：拿着完整的流速 (u_k, v_k, w_k)，开一个新循环计算特征尺度参数
+    /// ====================================================================
+    double u_grad_N_sum = 0.0;
+    double grad_N_squared_sum = 0.0;
+
+    for (int m = 0; m < n_nodes; ++m) {
+      double dNm_dx = bas_grad[l][m][0];
+      double dNm_dy = bas_grad[l][m][1];
+      double dNm_dz = bas_grad[l][m][2];
+
+      // 核心：完整的流速向量 与 当前节点形函数梯度的内积 的绝对值
+      u_grad_N_sum += fabs(u_k * dNm_dx + v_k * dNm_dy + w_k * dNm_dz);
+
+      // 顺便把 PSPG 需要的纯几何对角线也累加了
+      grad_N_squared_sum += (dNm_dx * dNm_dx + dNm_dy * dNm_dy + dNm_dz * dNm_dz);
     }
+
+
+
+    double h_supg = 0.0;
+    double h_pspg = 0.0;
+    /// 对于压力连续性方程，它不具备流动方向性偏好，
+    /// 使用基于形函数几何梯度的调和平均，自动捕捉三棱柱的“最短边（厚度）”作为防过度耗散的基准尺度
+    if (grad_N_squared_sum > 1e-15) {
+      h_pspg = 2.0 / sqrt(grad_N_squared_sum);
+    } else {
+      h_pspg = pow(volume * jac, 1.0 / 3.0); // 极小概率退化保护
+    }
+
+    /// PSPG 稳定化参数
+//    double tau_pspg = (h_pspg * h_pspg) / (12.0 * mu_value);
+
+    /// (未来用于 N-S Jacobian，这里计算 tau_supg)
+    double tau_supg = 0.0;
+    if (U_norm > 1e-12 && u_grad_N_sum > 1e-12) {
+      h_supg = 2.0 * U_norm / u_grad_N_sum;
+      tau_supg = 1.0 / sqrt(pow(2.0 * U_norm / h_supg, 2.0) + pow(4.0 * mu / (rho * h_supg * h_supg), 2.0));
+    }
+    else {
+      // 纯扩散极限下，复用 h_pspg 作为特征尺度，避免截断为 0
+      tau_supg = (h_pspg * h_pspg) / (4.0 * mu / rho);
+    }
+    // 尝试 0.5, 0.2, 或者 0.1。值越小，中心峰值速度越高（越接近理论抛物线）
+    double tau_pspg_calc = (tau_supg / rho) * 0.02;
+
+    // 4. 终极护甲：PSPG 绝对下限（Floor Limiter）！
+    // 无论 h 有多小，tau_pspg 绝对不能低于这个保命值，否则矩阵死无全尸！
+    // 如果发现 MUMPS 还是挂，就把 1e-6 往上调到 1e-5 或 1e-4。
+    double min_tau_pspg = 1e-13;
+
+    // 强行取大值！
+    double tau_pspg = std::max(tau_pspg_calc, min_tau_pspg);
+    double tune_supg = 0.5e-1;
+    tau_supg *= tune_supg;
+
     /// 组装积分
     for (int i = 0; i < n_nodes; ++i) {
       double Ni = bas_val[l][i];

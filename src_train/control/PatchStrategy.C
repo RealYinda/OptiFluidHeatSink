@@ -2446,94 +2446,81 @@ void PatchStrategy::Stress_max(double* vector, int len, hier::Patch<NDIM>& patch
  *
  *  未改完
  *
+ * Yin-Da Wang 2026-04-30改完Z
  ************************************************************************/
 void PatchStrategy::applyTh_Load(hier::Patch<NDIM>& patch, const double time,
                                  const double dt, const string& component_name) {
   /// 取出本地PatchGeometry.
   tbox::Pointer<hier::PatchGeometry<NDIM> > patch_geo =
       patch.getPatchGeometry();
-  tbox::Pointer<pdat::VectorData<NDIM, double> > th_rhs_data =
+  int num_faces = patch.getNumberOfFaces();
+  tbox::Pointer<pdat::VectorData<NDIM, double> > vec_data =
       patch.getPatchData(th_rhs_id);
-
-  //update #5 @1 -05-08
-  //外加体热源
-#if 0
-  //  int load_size = d_load_types.getSize();
-  //  for (int k = 0; k < load_size; ++k) {
-  // 获取指定编号和类型的集合包含的网格实体的索引。
-  if (patch.hasEntitySet(1, hier::EntityUtilities::NODE)) {
-    const tbox::Array<int>& entity_idx = patch_geo->getEntityIndicesInSet(
-          1, hier::EntityUtilities::NODE);
-    // 获取物理边界上节点的数目.
-    int size = entity_idx.getSize();
-    ///
-
-  }
-  //  }
-#endif
-
-  /// 第二类边界条件
-  //update #5 @2  -05-08
-#if 1
-  //update #5 @3
-  //自由度信息中的映射信息
-  int* dof_map = T_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
-  /// 取出本地Patch的结点坐标数组.
+  double* vec_val = vec_data->getPointer();
+  tbox::Array<int>face_node_ext,face_node_idx;
+  patch.getPatchTopology()->getFaceAdjacencyNodes(face_node_ext,face_node_idx);
   tbox::Pointer<pdat::NodeData<NDIM, double> > node_coord =
       patch_geo->getNodeCoordinates();
-  int num_faces =patch.getNumberOfEntities(hier::EntityUtilities::FACE, 0);
+  patch.getPatchTopology()->getFaceAdjacencyNodes(face_node_ext,face_node_idx);
+  // 自由度信息中的映射信息。
+  int* dof_map = T_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
 
-  double q=0;//单位面积表面力
-  if (patch_geo->hasEntitySet(3, hier::EntityUtilities::FACE)) {
-    // 获取指定编号和类型的集合包含的网格实体的索引。
-    const tbox::Array<int>& Face_idx = patch_geo->getEntityIndicesInSet(
-          3, hier::EntityUtilities::FACE,num_faces);
-    tbox::Pointer<hier::PatchTopology<NDIM> > patch_top =
-        patch.getPatchTopology();
-    //单元节点邻接关系数据
-    tbox::Array<int>face_node_ext,face_node_idx;
-    patch.getPatchTopology()->getFaceAdjacencyNodes(face_node_ext,face_node_idx);
-    //单元节点邻接关系数据
-    tbox::Array<int>face_cell_ext,face_cell_idx;
-    patch.getPatchTopology()->getFaceAdjacencyCells(face_cell_ext,face_cell_idx);
-    int size = Face_idx.getSize();
-    for (int face=0; face<size;face++)
-    {
-      int n=3;//面单元节点数
-      int dof_num=n;
-      tbox::Array<int> node_mapping(dof_num);
-      int node_id[3]={0,0,0};
-
-      //面上三角形的三个顶点编号
-      node_id[0]=face_node_idx[face_node_ext[Face_idx[face]]];//Face_idx[face]面的编号
-      node_id[1]=face_node_idx[face_node_ext[Face_idx[face]]+1];
-      node_id[2]=face_node_idx[face_node_ext[Face_idx[face]]+2];
-      tbox::Array<hier::DoubleVector<NDIM> > vertex(n);
-      for (int k=0; k<n;k++){
-        for(int j=0; j<n;j++){
-          vertex[k][j]=(*node_coord)(j,node_id[k]);
+  for(int ff = 0; ff < num_faces; ff ++){
+    std::map<int, double>::iterator it = g_boundary_to_flux.find(ff);
+    if (it != g_boundary_to_flux.end()) {
+      double q = it->second;
+      int face_node = face_node_ext[ff+1]-face_node_ext[ff];
+      double b[face_node];
+      double k[face_node][face_node];
+      int node_id[face_node];
+      if(face_node == 3){
+        //面上三角形的三个顶点编号
+        node_id[0]=face_node_idx[face_node_ext[ff]];//Face_idx[face]面的编号
+        node_id[1]=face_node_idx[face_node_ext[ff+1]];
+        node_id[2]=face_node_idx[face_node_ext[ff+2]];
+        tbox::Array<hier::DoubleVector<NDIM> > vertex(face_node);
+        for (int k=0; k<face_node;k++){
+          for(int j=0; j<face_node;j++){
+            vertex[k][j]=(*node_coord)(j,node_id[k]);
+          }
         }
-      }
+        double area = sqrt(AREA(vertex[0], vertex[1], vertex[2]))
+            / 2.0;
+        for (int i = 0; i < face_node; i++) {
+          b[i] =  q * area / 3.0;
+        }
 
-      for (int i1 = 0, j = face_node_ext[Face_idx[face]]; i1 < n; ++i1, ++j) {
-        node_mapping[i1] = dof_map[face_node_idx[j]];
-      }
 
-      tbox::Pointer<tbox::Vector<double> > ele_vec = new tbox::Vector<double>();
-      ele_vec->resize(dof_num);
-      for (int i = 0; i < dof_num; ++i) {
-        (*ele_vec)[i] = 0.0;
+      } /// 四面体到此结束
+      else if(face_node == 4){
+        //面上四边形的四个顶点编号
+        node_id[0]=face_node_idx[face_node_ext[ff]];//Face_idx[face]面的编号
+        node_id[1]=face_node_idx[face_node_ext[ff]+1];
+        node_id[2]=face_node_idx[face_node_ext[ff]+2];
+        node_id[3]=face_node_idx[face_node_ext[ff]+3];
+        tbox::Array<hier::DoubleVector<NDIM> > vertex(face_node);
+        for (int k=0; k<face_node;k++){
+          for(int j=0; j<face_node;j++){
+            vertex[k][j]=(*node_coord)(j,node_id[k]);
+          }
+        }
+        double area1 = sqrt(AREA(vertex[0], vertex[1], vertex[2])) / 2.0;
+        double area2 = sqrt(AREA(vertex[0], vertex[2], vertex[3])) / 2.0;
+        double area = area1 + area2;
+        for (int i = 0; i < face_node; i++) {
+          b[i] =  q * area / 4.0;
+        }
+      }/// endof node4
+      for (int i = 0; i < face_node; i++) {
+        if(d_is_time_domain_solve)
+          vec_data->addVectorValue(dof_map[node_id[i]], b[i]*dt);
+        else
+          vec_data->addVectorValue(dof_map[node_id[i]], b[i]);
       }
-
-      double area=sqrt(AREA(vertex[0],vertex[1],vertex[2]))/2.0;
-      for(int ii=0;ii<n;ii++)
-        (*ele_vec)[ii]=q*area/3;
-      for(int ii=0;ii<dof_num;ii++)
-        th_rhs_data->getPointer()[node_mapping[ii]] += (*ele_vec)[ii];
     }
   }
-#endif
-  //cout<<"load ok"<<endl;
+
+
 }
 
 /*************************************************************************
@@ -4062,6 +4049,13 @@ void PatchStrategy::getFromInput(tbox::Pointer<tbox::Database> db) {
     TBOX_ERROR(d_object_name << ": "
                << " No key `query_file_name' found in data." << endl);
   }
+  if (db->keyExists("simulation_data")) {
+    d_simulation_data_name = db->getString("simulation_data");
+  } else {
+    TBOX_ERROR(d_object_name << ": "
+               << " No key `simulation_data' found in data." << endl);
+  }
+
   if (db->keyExists("time_domain_solving")) {
     d_is_time_domain_solve = db->getBool("time_domain_solving");
   } else {
@@ -4110,7 +4104,44 @@ void PatchStrategy::getFromInput(tbox::Pointer<tbox::Database> db) {
                << " No key `wall_velocity_mark' found in data." << endl);
   }
 
+  /// 读取完毕后提取全局编号n
+  size_t pos = d_simulation_data_name.find("sim_");
+  if (pos != std::string::npos) {
+    // 从 "sim_" 往后数 4 个字符，截取 4 位长度
+    g_sim_id = d_simulation_data_name.substr(pos + 4, 4);
+  }
 
+  std::ifstream sim_file(d_simulation_data_name.c_str());
+  if (!sim_file.is_open()) {
+    TBOX_ERROR(d_object_name << ": 无法打开仿真采样文件 " << d_simulation_data_name << std::endl);
+  }
+
+  std::string line;
+  while (std::getline(sim_file, line)) {
+    // 匹配流速
+    if (line.find("VELOCITY") != std::string::npos) {
+      std::stringstream ss(line);
+      std::string keyword;
+      ss >> keyword >> g_inlet_velocity;
+
+      // 注意：如果你的类内部还有自己控制流速的成员变量，可以在这里一并覆盖赋值
+      // this->inlet_velocity = g_inlet_velocity;
+    }
+    // 匹配到矩阵开始标志
+    else if (line.find("THERMAL_MAP_START") != std::string::npos) {
+      // 循环 10 行 10 列，逐个浮点数读取
+      for (int r = 0; r < 10; ++r) {
+        for (int c = 0; c < 10; ++c) {
+          double current_heat_flux = 0.0;
+          sim_file >> current_heat_flux;
+
+          // 核心操作：将面编号作为 Key，热通量作为 Value 存入 Map
+          g_boundary_to_flux[power_in[r][c]] = current_heat_flux;
+        }
+      }
+    }
+  }
+  sim_file.close();
 
 }
 

@@ -3452,7 +3452,7 @@ void PatchStrategy::applyInitFluidConstraint(hier::Patch<NDIM>& patch, const dou
       double prescribed_vel[3] = {0.0, 0.0, 0.0};
       if (bc_type == 1) {
         // 入口 (Inlet) - 假定 X 方向 0.5 m/s
-        prescribed_vel[0] = 0.5;
+        prescribed_vel[0] = g_inlet_velocity;
       } else if (bc_type == 2) {
         // 壁面 (Wall) - 无滑移，保持全 0
       } else {

@@ -232,6 +232,7 @@ int ElasFlow::advanceLevel(
     tbox::pout << "**************************";
     tbox::pout << "--- Initial value for N-S system ---";
     tbox::pout << "**************************"<<endl;
+    p_strategy->omega_here = false;
 
     F_stokes_num_intc_mat->computing(patch_level, current_time, actual_dt);
     F_num_intc_rhs->computing(patch_level, current_time, actual_dt);
@@ -245,6 +246,7 @@ int ElasFlow::advanceLevel(
     tbox::pout<<"Update pressure and velocity data ......"<<endl;
     F_num_intc_update->computing(patch_level, current_time, actual_dt);
     d_alloc_fluid_data->deallocatePatchData(patch_level);
+    p_strategy->omega_here = true;
   }
   /// ========================================================
   /// Newton-Raphson iterations

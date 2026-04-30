@@ -3530,6 +3530,7 @@ void PatchStrategy::updateFluidSolution(hier::Patch<NDIM>& patch,
   /// 使用宏提取持久化的节点数据片（这里面安全地存放着上一迭代步的解）
   GET_PATCH_DATA(patch, vel_plot, F_vel_plot_id, Node, double);
   GET_PATCH_DATA(patch, pre_plot, F_pre_plot_id, Node, double);
+  GET_PATCH_DATA(patch, fluid_boundary, boundary_fluid_di_id, Node, int);
 
   /// 获取流体节点映射信息 (每个节点 NDIM + 1 个自由度)
   int* dof_map = F_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
@@ -3541,21 +3542,28 @@ void PatchStrategy::updateFluidSolution(hier::Patch<NDIM>& patch,
   /// 获取节点数 (1 表示包含一层 ghost 节点，保证边界和并行通信更新完整)
   int num_nodes = patch.getNumberOfNodes(0);
   int* F_dis_ptr = F_dof_info->getDOFDistribution(patch);
-
+  double omega = 0.2;
+  if(g_inlet_velocity>1) omega = 0.05;
+  else if(g_inlet_velocity>0.75) omega = 0.1;
+  if(!omega_here) omega = 1.;
+  // g_inlet_velocity 是咱们之前加的全局变量
+  double max_delta_vel = 0.2 * g_inlet_velocity;
   /// 极简循环：遍历所有节点，进行向量累加
   for (int i = 0; i < num_nodes; ++i) {
 
     if(F_dis_ptr[i] == 0) continue;
     /// 提取该节点在全局向量中的起始映射位置
     int base_index = dof_map[i];
+    // 获取当前节点是否是边界
+    int bc_type = (*fluid_boundary)(0, i);
 
     /// 1. 更新速度分量 (u, v, w)
     for (int d = 0; d < NDIM; ++d) {
       int idx = base_index + d;
 
       // 【核心修改】：从安全的画图场读取旧值，加上刚刚解出的增量
-      double new_vel = (*vel_plot)(d, i) + delta_val[idx];
-
+      double new_vel = (*vel_plot)(d, i) + omega *delta_val[idx];
+//      double new_vel = (*vel_plot)(d, i) + vel_omega * d_vel;
       // 将最新解填入代数向量 (供后续操作，如残差范数计算使用)
       sol_val[idx] = new_vel;
 
@@ -3567,7 +3575,7 @@ void PatchStrategy::updateFluidSolution(hier::Patch<NDIM>& patch,
     int p_idx = base_index + NDIM;
 
     // 【核心修改】：从安全的画图场读取旧压力，加上压力增量
-    double new_pre = (*pre_plot)(0, i) + delta_val[p_idx];
+    double new_pre = (*pre_plot)(0, i) + omega *delta_val[p_idx];
 
     // 填入代数向量
     sol_val[p_idx] = new_pre;
@@ -3678,6 +3686,7 @@ void PatchStrategy::applyFluidJacobianConstraint(hier::Patch<NDIM>& patch, const
       patch.getPatchData(F_matrix_id);
   tbox::Pointer<pdat::VectorData<NDIM, double> > vec_data =
       patch.getPatchData(F_rhs_id);
+  int* F_dis_ptr = F_dof_info->getDOFDistribution(patch);
 
   /// 直接取出边界掩码数据片
   GET_PATCH_DATA(patch, fluid_boundary, boundary_fluid_di_id, Node, int);
@@ -3695,7 +3704,10 @@ void PatchStrategy::applyFluidJacobianConstraint(hier::Patch<NDIM>& patch, const
 
   int num_nodes = patch.getNumberOfNodes(0);
 
+
+  // 强制放大雅可比矩阵的主对角线
   for (int node_id = 0; node_id < num_nodes; ++node_id){
+
     int bc_type = (*fluid_boundary)(0, node_id);
 
     /// 如果是边界节点 (bc_type > 0)

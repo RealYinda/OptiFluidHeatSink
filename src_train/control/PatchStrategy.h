@@ -562,6 +562,7 @@ public:
   int getF_SolutionID() { return F_solution_id; }
   int getF_RHSID() { return F_rhs_id; }
   int getF_DeltaID() { return F_delta_id; }
+  bool omega_here = false;
 
   /**
    * @brief 获取自由度信息

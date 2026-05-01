@@ -224,6 +224,9 @@ int ElasFlow::advanceLevel(
   tbox::Pointer<PatchStrategy> p_strategy = d_patch_strategy;
 
 #if FLUID_COMPUTATION
+  double target_velocity = p_strategy->get_inlet_velocity();
+  double starting_velocity = 0.2;
+  starting_velocity = min(target_velocity, 0.2);
   if (step_number == 0){
     /// ========================================================
     /// “初始猜测值”
@@ -234,6 +237,7 @@ int ElasFlow::advanceLevel(
     tbox::pout << "**************************"<<endl;
     p_strategy->omega_here = false;
 
+    p_strategy->set_inlet_velocity(starting_velocity);
     F_stokes_num_intc_mat->computing(patch_level, current_time, actual_dt);
     F_num_intc_rhs->computing(patch_level, current_time, actual_dt);
     F_stokes_num_intc_cons->computing(patch_level, current_time, actual_dt);
@@ -248,43 +252,57 @@ int ElasFlow::advanceLevel(
     d_alloc_fluid_data->deallocatePatchData(patch_level);
     p_strategy->omega_here = true;
   }
-  /// ========================================================
-  /// Newton-Raphson iterations
-  /// ========================================================
-  #if NEWTON_RAPHSON
-  int max_newton_iter = 500;
-  double current_error = 1.0;
-  int iter = 0;
-  while (iter < max_newton_iter && current_error > 1e-8){
-    d_alloc_fluid_data->allocatePatchData(patch_level, current_time + predict_dt);
+  int num_continuation_steps = 4;
+
+  double here_velocity = 0.;
+  for(int c_step = 0; c_step < num_continuation_steps; c_step ++){
+    here_velocity = min(target_velocity,starting_velocity+c_step*0.2);
+    p_strategy->set_inlet_velocity(here_velocity);
     tbox::pout << "**************************";
-    tbox::pout << "--- Newton-Raphson iteration number: " << iter << " ---" ;
+    tbox::pout << "--- Here sweep velocity: " << here_velocity << " ---" ;
     tbox::pout << "**************************"<<endl;
-    F_num_intc_resid->computing(patch_level, current_time, actual_dt);
-    F_num_intc_jacob->computing(patch_level, current_time, actual_dt);
-    F_num_intc_cons->computing(patch_level, current_time, actual_dt);
-    int mat_id_F = p_strategy->getF_MatrixID();
-    int vec_id_F = p_strategy->getF_RHSID();
-    int delta_id_F = p_strategy->getF_DeltaID();
-    int sol_id_F = p_strategy->getF_SolutionID();
-    d_solver_F->setMatrix(mat_id_F);
-    d_solver_F->setRHS(vec_id_F);
-    d_solver_F->solve(first_step, delta_id_F, patch_level, d_solver_db->getDatabase ("SolverF"));
-    F_num_intc_update->computing(patch_level, current_time, 0.0);
-    /// 判断是否收敛
-    J_F_sol_vec = new JPSOL::JVector<NDIM, double>(patch_level, sol_id_F);
-    J_F_delta_vec = new JPSOL::JVector<NDIM, double>(patch_level, delta_id_F);
-    double sol_L2Norm = J_F_sol_vec->l2Norm();
-    double delta_L2Norm = J_F_delta_vec->l2Norm();
-    current_error = delta_L2Norm/(sol_L2Norm+1e-15);
-    tbox::pout << "    Iter: " << iter
-               << " | Delta Norm: " << delta_L2Norm
-               << " | Rel Error: " << current_error << endl;
-    d_alloc_fluid_data->deallocatePatchData(patch_level);
-    iter ++;
+    /// ========================================================
+    /// Newton-Raphson iterations
+    /// ========================================================
+    #if NEWTON_RAPHSON
+    int max_newton_iter = 300;
+    double current_error = 1.0;
+    int iter = 0;
+    while (iter < max_newton_iter && current_error > 1e-5){
+      d_alloc_fluid_data->allocatePatchData(patch_level, current_time + predict_dt);
+      tbox::pout << "**************************";
+      tbox::pout << "--- Newton-Raphson iteration number: " << iter << " ---" ;
+      tbox::pout << "**************************"<<endl;
+      p_strategy->iter_num = iter;
+      F_num_intc_resid->computing(patch_level, current_time, actual_dt);
+      F_num_intc_jacob->computing(patch_level, current_time, actual_dt);
+      F_num_intc_cons->computing(patch_level, current_time, actual_dt);
+      int mat_id_F = p_strategy->getF_MatrixID();
+      int vec_id_F = p_strategy->getF_RHSID();
+      int delta_id_F = p_strategy->getF_DeltaID();
+      int sol_id_F = p_strategy->getF_SolutionID();
+      d_solver_F->setMatrix(mat_id_F);
+      d_solver_F->setRHS(vec_id_F);
+      d_solver_F->solve(first_step, delta_id_F, patch_level, d_solver_db->getDatabase ("SolverF"));
+      F_num_intc_update->computing(patch_level, current_time, 0.0);
+      /// 判断是否收敛
+      J_F_sol_vec = new JPSOL::JVector<NDIM, double>(patch_level, sol_id_F);
+      J_F_delta_vec = new JPSOL::JVector<NDIM, double>(patch_level, delta_id_F);
+      double sol_L2Norm = J_F_sol_vec->l2Norm();
+      double delta_L2Norm = J_F_delta_vec->l2Norm();
+      current_error = delta_L2Norm/(sol_L2Norm+1e-15);
+      tbox::pout << "    Iter: " << iter
+                 << " | Delta Norm: " << delta_L2Norm
+                 << " | Rel Error: " << current_error << endl;
+      d_alloc_fluid_data->deallocatePatchData(patch_level);
+      iter ++;
+
+    }
+#endif
+    if(here_velocity>=target_velocity) break;
 
   }
-  #endif
+
 #endif
 
   /// 为矩阵向量开辟内存

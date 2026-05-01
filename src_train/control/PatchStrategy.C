@@ -2464,58 +2464,67 @@ void PatchStrategy::applyTh_Load(hier::Patch<NDIM>& patch, const double time,
   patch.getPatchTopology()->getFaceAdjacencyNodes(face_node_ext,face_node_idx);
   // 自由度信息中的映射信息。
   int* dof_map = T_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  for(int r = 0; r < 10; r ++){
+    for(int c = 0; c < 10; c ++){
+      if (HAS_ENTITY_SET(patch, power_in[r][c], FACE, 1)){
+        DECLARE_ENTITY_SET(patch, load_list, power_in[r][c], FACE, 1);
+        std::map<int, double>::iterator it = g_boundary_to_flux.find(power_in[r][c]);
+        if (it != g_boundary_to_flux.end()) {
+          double q = it->second;
+          for(int ff = 0; ff < load_list.getSize(); ff++){
+            int face_node = face_node_ext[ff+1]-face_node_ext[ff];
+            double b[face_node];
+            double k[face_node][face_node];
+            int node_id[face_node];
+            if(face_node == 3){
+              //面上三角形的三个顶点编号
+              node_id[0]=face_node_idx[face_node_ext[ff]];//Face_idx[face]面的编号
+              node_id[1]=face_node_idx[face_node_ext[ff+1]];
+              node_id[2]=face_node_idx[face_node_ext[ff+2]];
+              tbox::Array<hier::DoubleVector<NDIM> > vertex(face_node);
+              for (int k=0; k<face_node;k++){
+                for(int j=0; j<face_node;j++){
+                  vertex[k][j]=(*node_coord)(j,node_id[k]);
+                }
+              }
+              double area = sqrt(AREA(vertex[0], vertex[1], vertex[2]))
+                  / 2.0;
+              for (int i = 0; i < face_node; i++) {
+                b[i] =  q * area / 3.0;
+              }
 
-  for(int ff = 0; ff < num_faces; ff ++){
-    std::map<int, double>::iterator it = g_boundary_to_flux.find(ff);
-    if (it != g_boundary_to_flux.end()) {
-      double q = it->second;
-      int face_node = face_node_ext[ff+1]-face_node_ext[ff];
-      double b[face_node];
-      double k[face_node][face_node];
-      int node_id[face_node];
-      if(face_node == 3){
-        //面上三角形的三个顶点编号
-        node_id[0]=face_node_idx[face_node_ext[ff]];//Face_idx[face]面的编号
-        node_id[1]=face_node_idx[face_node_ext[ff+1]];
-        node_id[2]=face_node_idx[face_node_ext[ff+2]];
-        tbox::Array<hier::DoubleVector<NDIM> > vertex(face_node);
-        for (int k=0; k<face_node;k++){
-          for(int j=0; j<face_node;j++){
-            vertex[k][j]=(*node_coord)(j,node_id[k]);
+
+            } /// 四面体到此结束
+            else if(face_node == 4){
+              //面上四边形的四个顶点编号
+              node_id[0]=face_node_idx[face_node_ext[ff]];//Face_idx[face]面的编号
+              node_id[1]=face_node_idx[face_node_ext[ff]+1];
+              node_id[2]=face_node_idx[face_node_ext[ff]+2];
+              node_id[3]=face_node_idx[face_node_ext[ff]+3];
+              tbox::Array<hier::DoubleVector<NDIM> > vertex(face_node);
+              for (int k=0; k<face_node;k++){
+                for(int j=0; j<face_node;j++){
+                  vertex[k][j]=(*node_coord)(j,node_id[k]);
+                }
+              }
+              double area1 = sqrt(AREA(vertex[0], vertex[1], vertex[2])) / 2.0;
+              double area2 = sqrt(AREA(vertex[0], vertex[2], vertex[3])) / 2.0;
+              double area = area1 + area2;
+              for (int i = 0; i < face_node; i++) {
+                b[i] =  q * area / 4.0;
+              }
+            }/// endof node4
+            for (int i = 0; i < face_node; i++) {
+              if(d_is_time_domain_solve)
+                vec_data->addVectorValue(dof_map[node_id[i]], b[i]*dt);
+              else
+                vec_data->addVectorValue(dof_map[node_id[i]], b[i]);
+            }
+
           }
-        }
-        double area = sqrt(AREA(vertex[0], vertex[1], vertex[2]))
-            / 2.0;
-        for (int i = 0; i < face_node; i++) {
-          b[i] =  q * area / 3.0;
+
         }
 
-
-      } /// 四面体到此结束
-      else if(face_node == 4){
-        //面上四边形的四个顶点编号
-        node_id[0]=face_node_idx[face_node_ext[ff]];//Face_idx[face]面的编号
-        node_id[1]=face_node_idx[face_node_ext[ff]+1];
-        node_id[2]=face_node_idx[face_node_ext[ff]+2];
-        node_id[3]=face_node_idx[face_node_ext[ff]+3];
-        tbox::Array<hier::DoubleVector<NDIM> > vertex(face_node);
-        for (int k=0; k<face_node;k++){
-          for(int j=0; j<face_node;j++){
-            vertex[k][j]=(*node_coord)(j,node_id[k]);
-          }
-        }
-        double area1 = sqrt(AREA(vertex[0], vertex[1], vertex[2])) / 2.0;
-        double area2 = sqrt(AREA(vertex[0], vertex[2], vertex[3])) / 2.0;
-        double area = area1 + area2;
-        for (int i = 0; i < face_node; i++) {
-          b[i] =  q * area / 4.0;
-        }
-      }/// endof node4
-      for (int i = 0; i < face_node; i++) {
-        if(d_is_time_domain_solve)
-          vec_data->addVectorValue(dof_map[node_id[i]], b[i]*dt);
-        else
-          vec_data->addVectorValue(dof_map[node_id[i]], b[i]);
       }
     }
   }
@@ -3542,12 +3551,8 @@ void PatchStrategy::updateFluidSolution(hier::Patch<NDIM>& patch,
   /// 获取节点数 (1 表示包含一层 ghost 节点，保证边界和并行通信更新完整)
   int num_nodes = patch.getNumberOfNodes(0);
   int* F_dis_ptr = F_dof_info->getDOFDistribution(patch);
-  double omega = 0.2;
-  if(g_inlet_velocity>1) omega = 0.05;
-  else if(g_inlet_velocity>0.75) omega = 0.1;
-  if(!omega_here) omega = 1.;
+  double omega = 1.;
   // g_inlet_velocity 是咱们之前加的全局变量
-  double max_delta_vel = 0.2 * g_inlet_velocity;
   /// 极简循环：遍历所有节点，进行向量累加
   for (int i = 0; i < num_nodes; ++i) {
 

@@ -563,6 +563,9 @@ public:
   int getF_RHSID() { return F_rhs_id; }
   int getF_DeltaID() { return F_delta_id; }
   bool omega_here = false;
+  int iter_num = 0.;
+  double get_inlet_velocity(){return g_inlet_velocity;}
+  void set_inlet_velocity(double now_v){g_inlet_velocity = now_v;}
 
   /**
    * @brief 获取自由度信息

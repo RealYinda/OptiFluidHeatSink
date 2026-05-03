@@ -85,6 +85,8 @@ void ElasFlow::initializeLevelIntegrator(
   /// 数值构件：数据采集并做定量分析
   d_num_intc_data_explorer = new algs::NumericalIntegratorComponent<NDIM>(
         "DATAEXPLORE", d_patch_strategy, manager);
+  d_num_intc_training_explorer = new algs::NumericalIntegratorComponent<NDIM>(
+        "TRAINING", d_patch_strategy, manager);
 
 
   /// 数值构件：做和温度场相关的后处理
@@ -252,11 +254,11 @@ int ElasFlow::advanceLevel(
     d_alloc_fluid_data->deallocatePatchData(patch_level);
     p_strategy->omega_here = true;
   }
-  int num_continuation_steps = 4;
+  int num_continuation_steps = 100;
 
   double here_velocity = 0.;
   for(int c_step = 0; c_step < num_continuation_steps; c_step ++){
-    here_velocity = min(target_velocity,starting_velocity+c_step*0.2);
+    here_velocity = min(target_velocity,starting_velocity+c_step*0.02);
     p_strategy->set_inlet_velocity(here_velocity);
     tbox::pout << "**************************";
     tbox::pout << "--- Here sweep velocity: " << here_velocity << " ---" ;

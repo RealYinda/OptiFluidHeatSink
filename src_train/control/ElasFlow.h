@@ -176,6 +176,9 @@ private:
   /*!@brief 数值构件: 加载载荷 */
   tbox::Pointer<algs::NumericalIntegratorComponent<NDIM> > d_num_intc_load;
 
+
+  tbox::Pointer<algs::NumericalIntegratorComponent<NDIM> > d_num_intc_training_explorer;
+
   /// 解法器管理器及解法器对象
   tbox::Pointer<solv::LinearSolverManager<NDIM> > d_solver_manager;
   tbox::Pointer<solv::BaseLinearSolver<NDIM> > d_solver_s;

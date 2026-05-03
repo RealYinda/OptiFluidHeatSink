@@ -465,6 +465,7 @@ void PatchStrategy::initializeComponent(
   } else if (component_name == "POSTPROCESS") {        // 数值构件, 计算应力.
     component->registerCommunicationPatchData(d_improved_coefficient_id, d_improved_coefficient_id);
   }else if (component_name == "DATAEXPLORE") {        // 数值构件, 计算应力.
+  }else if (component_name == "TRAINING") {        // 数值构件, 计算应力.
   }else if (component_name == "THERMALPOST") {        // 数值构件, 计算应力.
   }  else if (component_name == "Dt") {        // update #6 @10  步长构件,
     //update #8 @5 添加热求解相关数值构件
@@ -1001,7 +1002,9 @@ void PatchStrategy::computeOnPatch(hier::Patch<NDIM>& patch, const double time,
     PostprocessStress(patch, time, dt, component_name);
   } else if (component_name == "DATAEXPLORE") {  // 数值构件, 计算应力.
     Dataexplorer(patch, time, dt, component_name);
-  } else if (component_name == "THERMALPOST") {  // 数值构件, 后处理温度.
+  } else if (component_name == "TRAINING") {  // 数值构件, 计算应力.
+    ExportTrainingData(patch, time, dt, component_name);
+  }else if (component_name == "THERMALPOST") {  // 数值构件, 后处理温度.
     ThermalPostprocess(patch, time, dt, component_name);
   }else if(component_name == "TH_MAT") {
     buildTh_MatrixOnPatch(patch, time, dt, component_name);
@@ -2465,7 +2468,7 @@ void PatchStrategy::applyTh_Load(hier::Patch<NDIM>& patch, const double time,
   // 自由度信息中的映射信息。
   int* dof_map = T_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
   for(int r = 0; r < 10; r ++){
-    for(int c = 0; c < 10; c ++){
+    for(int c = 0; c < 2; c ++){
       if (HAS_ENTITY_SET(patch, power_in[r][c], FACE, 1)){
         DECLARE_ENTITY_SET(patch, load_list, power_in[r][c], FACE, 1);
         std::map<int, double>::iterator it = g_boundary_to_flux.find(power_in[r][c]);
@@ -3554,6 +3557,16 @@ void PatchStrategy::updateFluidSolution(hier::Patch<NDIM>& patch,
   double omega = 1.;
   // g_inlet_velocity 是咱们之前加的全局变量
   /// 极简循环：遍历所有节点，进行向量累加
+  //  if (!omega_here) {
+  //    // 线性 Stokes 初始化步，必须满步长建立初值
+  //    omega = 1.0;
+  //  } else {
+  //    // N-S 非线性迭代，前中期强行勒住超调，后期加速
+  //    if (this->iter_num < 5)       omega = 0.1;  // 前 5 步极强阻尼，吸收提速冲击
+  //    else if (this->iter_num < 15) omega = 0.3;  // 冲击波平息，逐渐放开
+  //    else if (this->iter_num < 30) omega = 0.6;  // 流场结构成型，大步推进
+  //    else                          omega = 0.9;  // 终极逼近
+  //  }
   for (int i = 0; i < num_nodes; ++i) {
 
     if(F_dis_ptr[i] == 0) continue;
@@ -3698,6 +3711,7 @@ void PatchStrategy::applyFluidJacobianConstraint(hier::Patch<NDIM>& patch, const
 
   /// 自由度信息中的映射信息 (NDIM+1个自由度)
   int* dof_map = F_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
+  GET_PATCH_DATA(patch, vel_plot, F_vel_plot_id, Node, double); // 提取当前已建立的流场
 
   /// 确保 CSR 矩阵结构已装配完毕
   mat_data->assemble();
@@ -3717,12 +3731,17 @@ void PatchStrategy::applyFluidJacobianConstraint(hier::Patch<NDIM>& patch, const
 
     /// 如果是边界节点 (bc_type > 0)
     if (bc_type > 0) {
+      double delta_target[3] = {0.0, 0.0, 0.0};
 
-      if (bc_type == 1 || bc_type == 2) {
-        // 入口 (Inlet) 或 壁面 (Wall)
-        // 牛顿迭代解的是增量 \delta u，既然物理边界速度已知且固定，其增量严格为 0
+      if (bc_type == 1) {
+        // 【核心修复】：入口增量目标 = 目标速度 (g_inlet_velocity) - 当前实际已有的速度
+        delta_target[0] = g_inlet_velocity - (*vel_plot)(0, node_id);
+        delta_target[1] = 0.0 - (*vel_plot)(1, node_id);
+        delta_target[2] = 0.0 - (*vel_plot)(2, node_id);
+      } else if (bc_type == 2) {
+        // 壁面：目标永远是 0，所以增量 = 0 - 当前值
+        for(int d=0; d<NDIM; ++d) delta_target[d] = 0.0 - (*vel_plot)(d, node_id);
       } else {
-        // 其他类型的边界（例如自然边界/出口），不约束速度增量，直接跳过
         continue;
       }
 
@@ -3731,7 +3750,7 @@ void PatchStrategy::applyFluidJacobianConstraint(hier::Patch<NDIM>& patch, const
         int index = dof_map[node_id] + d;
 
         /// 右端项 (残差) 强制置 0
-        vec_val[index] = 0.0;
+        vec_val[index] = delta_target[d];
 
         /// 极速对角化 1 法处理约束 (雅可比矩阵本就不对称，只需处理行即可)
         for (int j = row_start[index]; j < row_start[index + 1]; ++j) {
@@ -4148,12 +4167,13 @@ void PatchStrategy::getFromInput(tbox::Pointer<tbox::Database> db) {
     else if (line.find("THERMAL_MAP_START") != std::string::npos) {
       // 循环 10 行 10 列，逐个浮点数读取
       for (int r = 0; r < 10; ++r) {
-        for (int c = 0; c < 10; ++c) {
+        for (int c = 0; c < 2; ++c) {
           double current_heat_flux = 0.0;
           sim_file >> current_heat_flux;
 
           // 核心操作：将面编号作为 Key，热通量作为 Value 存入 Map
           g_boundary_to_flux[power_in[r][c]] = current_heat_flux;
+
         }
       }
     }
@@ -4626,4 +4646,24 @@ double PatchStrategy::calcDynamicDetJ(
               + J[0][2]*(J[1][0]*J[2][1] - J[1][1]*J[2][0]);
 
   return std::abs(detJ);
+}
+void PatchStrategy::ExportTrainingData(hier::Patch<NDIM> &patch, const double time,
+                                 const double dt,
+                                 const string &component_name){
+  tbox::pout << ">>> Exporting Binary GNN Dataset for Sample " << g_sim_id << "..." << endl;
+  // 1. 获取几何与拓扑信息
+  tbox::Pointer<hier::PatchGeometry<NDIM> > patch_geo = patch.getPatchGeometry();
+  tbox::Pointer<pdat::NodeData<NDIM, double> > node_coord = patch_geo->getNodeCoordinates();
+  DECLARE_ADJACENCY(patch,cell,node,Cell,Node);
+  GET_PATCH_DATA(patch, vel_plot, F_vel_plot_id, Node, double);
+  GET_PATCH_DATA(patch, pre_plot, F_pre_plot_id, Node, double);
+  GET_PATCH_DATA(patch, T_plot, th_plot_id, Node, double);
+  GET_PATCH_DATA(patch, fluid_boundary, boundary_fluid_di_id, Node, int);
+  double fluid_layer_bound = 400e-6;
+  double tim_layer_bound = 500e-6;
+  double interposer_layer_bound = 650e-6;
+  int num_nodes = patch.getNumberOfNodes(0);
+  int num_cells = patch.getNumberOfCells(0);
+
+
 }

@@ -523,6 +523,9 @@ public:
   void Dataexplorer(hier::Patch<NDIM>& patch, const double time,
                     const double dt, const string& component_name);
 
+  void ExportTrainingData(hier::Patch<NDIM>& patch, const double time,
+                    const double dt, const string& component_name);
+
   /**
      * @brief ThermalPostprocess: 热问题的后处理
      * @param patch

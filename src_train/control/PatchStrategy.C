@@ -4140,6 +4140,19 @@ void PatchStrategy::getFromInput(tbox::Pointer<tbox::Database> db) {
                << " No key `wall_velocity_mark' found in data." << endl);
   }
 
+  if (db->keyExists("model_boundary")) {
+    model_boundary = db->getDoubleArray("model_boundary");
+  } else {
+    TBOX_ERROR(d_object_name << ": "
+               << " No key `model_boundary' found in data." << endl);
+  }
+  if (db->keyExists("thermal_map_xy")) {
+    thermal_map_xy = db->getDoubleArray("thermal_map_xy");
+  } else {
+    TBOX_ERROR(d_object_name << ": "
+               << " No key `thermal_map_xy' found in data." << endl);
+  }
+
   /// 读取完毕后提取全局编号n
   size_t pos = d_simulation_data_name.find("sim_");
   if (pos != std::string::npos) {
@@ -4659,11 +4672,166 @@ void PatchStrategy::ExportTrainingData(hier::Patch<NDIM> &patch, const double ti
   GET_PATCH_DATA(patch, pre_plot, F_pre_plot_id, Node, double);
   GET_PATCH_DATA(patch, T_plot, th_plot_id, Node, double);
   GET_PATCH_DATA(patch, fluid_boundary, boundary_fluid_di_id, Node, int);
+  double bottom_bound = 0.;
   double fluid_layer_bound = 400e-6;
   double tim_layer_bound = 500e-6;
   double interposer_layer_bound = 650e-6;
   int num_nodes = patch.getNumberOfNodes(0);
   int num_cells = patch.getNumberOfCells(0);
+  double eps = 1e-8;
+  /// 布局: [is_fluid, is_tim, is_interp, is_inlet, is_wall, is_outer, is_heat,
+  /// 7个
+  ///  V_in, Q_in, T, u, v, w, p, X, Y, Z]
+  /// 2+5+3
+  std::vector<float> node_data(num_nodes * 17, 0.0f);
+  for (int i = 0; i < num_nodes; ++i){
+    double x = (*node_coord)(0, i);
+    double y = (*node_coord)(1, i);
+    double z = (*node_coord)(2, i);
+    int base = i * 17;
+    // 物理层 Multi-Hot
+    if (z <= fluid_layer_bound + eps) node_data[base + 0] = 1.0f;
+    if (z >= fluid_layer_bound - eps && z <= tim_layer_bound + eps) node_data[base + 1] = 1.0f;
+    if (z >= tim_layer_bound - eps) node_data[base + 2] = 1.0f;
+    /// 如果是进水口的话这里写上
+    if ((*fluid_boundary)(0, i) == 1) {
+      node_data[base + 3] = 1.0f;
+      node_data[base + 7] = (float)g_inlet_velocity;
+    }
+    else if ((*fluid_boundary)(0, i) == 2) {
+      node_data[base + 4] = 1.0f;
+    }
+    if(std::abs(x - model_boundary[0]) < eps || std::abs(x - model_boundary[1]) < eps ||
+       std::abs(y - model_boundary[2]) < eps || std::abs(y - model_boundary[3]) < eps ||
+       std::abs(z - model_boundary[4]) < eps || std::abs(z - model_boundary[5]) < eps)
+      node_data[base + 5] = 1.0f;
+
+    if (std::abs(z - interposer_layer_bound) < eps) {
+      /// 标记发热面
+      node_data[base + 6] = 1.0f;
+
+      double x_idx = x / thermal_map_xy[0];
+      double y_idx = y / thermal_map_xy[1];
+
+      // X 维度
+      int row = std::floor(x_idx);
+      row = std::max(0, std::min(row, 9));
+
+      // Y 维度
+      int col = std::floor(y_idx);
+      col = std::max(0, std::min(col, 1));
+
+      // 默认取平坦内部的通量 (使用 .at 安全查询)
+      int power_face = power_in[row][col];
+      double q_exact = g_boundary_to_flux.at(power_face);
+
+      double rx_double = std::floor(x_idx + 0.5);
+      double ry_double = std::floor(y_idx + 0.5);
+      int rx = static_cast<int>(rx_double); // X 边界索引
+      int ry = static_cast<int>(ry_double); // Y 边界索引
+
+      // 使用 1e-5 容差抵抗浮点数误差。并且排除最外围的全局边界
+      bool on_x_edge = (std::abs(x_idx - rx_double) < 1e-5) && (rx > 0 && rx < 10);
+      bool on_y_edge = (std::abs(y_idx - ry_double) < 1e-5) && (ry > 0 && ry < 2);
+
+      if (on_x_edge && !on_y_edge) {
+        // 落在垂直交界线 (左右均分，X 变，Y=col 不变)
+        double q_exact_1 = g_boundary_to_flux.at(power_in[rx - 1][col]);
+        double q_exact_2 = g_boundary_to_flux.at(power_in[rx][col]);
+        q_exact = (q_exact_1 + q_exact_2) / 2.0;
+      }
+      else if (!on_x_edge && on_y_edge) {
+        // 落在水平交界线 (上下均分，X=row 不变，Y 变)
+        double q_exact_1 = g_boundary_to_flux.at(power_in[row][ry - 1]);
+        double q_exact_2 = g_boundary_to_flux.at(power_in[row][ry]);
+        q_exact = (q_exact_1 + q_exact_2) / 2.0;
+      }
+      else if (on_x_edge && on_y_edge) {
+        // 落在十字交叉点 (四个象限均分)
+        double q_exact_1 = g_boundary_to_flux.at(power_in[rx - 1][ry - 1]);
+        double q_exact_2 = g_boundary_to_flux.at(power_in[rx][ry - 1]);
+        double q_exact_3 = g_boundary_to_flux.at(power_in[rx - 1][ry]);
+        double q_exact_4 = g_boundary_to_flux.at(power_in[rx][ry]);
+        q_exact = (q_exact_1 + q_exact_2 + q_exact_3 + q_exact_4) / 4.0;
+      }
+
+      // 填入第 8 号槽位
+      node_data[base + 8] = (float)q_exact;
+    }
+    // 目标真值 (Target Y)
+    node_data[base + 9]  = (float)(*T_plot)(0, i);
+    node_data[base + 10]  = (float)(*vel_plot)(0, i);
+    node_data[base + 11]  = (float)(*vel_plot)(1, i);
+    node_data[base + 12] = (float)(*vel_plot)(2, i);
+    node_data[base + 13] = (float)(*pre_plot)(0, i);
+
+    // 绝对坐标 (通常不用作输入，仅方便后期核对和画图)
+    node_data[base + 14] = (float)x;
+    node_data[base + 15] = (float)y;
+    node_data[base + 16] = (float)z;
+
+  }
+  DECLARE_ADJACENCY(patch,edge,node,Edge,Node);
+  std::vector<int32_t> edge_indices;
+  std::vector<float> edge_attrs;
+  edge_indices.reserve(num_cells * 15 * 2 * 2);
+  edge_attrs.reserve(num_cells * 15 * 2 * 4);
+
+  for (int c = 0; c < num_cells; ++c){
+    int start_idx = cell_node_ext[c];
+    int num_nodes_in_cell = cell_node_ext[c+1] - start_idx;
+    for (int m = 0; m < num_nodes_in_cell; ++m){
+      for (int n = m + 1; n < num_nodes_in_cell; ++n){
+        int n1 = cell_node_idx[start_idx + m];
+        int n2 = cell_node_idx[start_idx + n];
+        // 计算相对空间向量
+        float dx = (float)((*node_coord)(0, n2) - (*node_coord)(0, n1));
+        float dy = (float)((*node_coord)(1, n2) - (*node_coord)(1, n1));
+        float dz = (float)((*node_coord)(2, n2) - (*node_coord)(2, n1));
+        float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+        // ----------------------------------------------------
+        // 正向边 n1 -> n2
+        // ----------------------------------------------------
+        edge_indices.push_back(n1);
+        edge_indices.push_back(n2);
+        edge_attrs.push_back(dx);
+        edge_attrs.push_back(dy);
+        edge_attrs.push_back(dz);
+        edge_attrs.push_back(dist);
+
+        // ----------------------------------------------------
+        // 反向边 n2 -> n1
+        // (GNN 中的流体偏微分算子通常需要有向边)
+        // ----------------------------------------------------
+        edge_indices.push_back(n2);
+        edge_indices.push_back(n1);
+        edge_attrs.push_back(-dx);
+        edge_attrs.push_back(-dy);
+        edge_attrs.push_back(-dz);
+        edge_attrs.push_back(dist);
+      }
+    }
+
+  }
+  int num_edges = edge_indices.size() / 2;
+  // =========================================================================
+  // 刷入二进制文件 (.bin)
+  // =========================================================================
+  char filename[256];
+  sprintf(filename, "GNN_Sample_%s.bin", g_sim_id.c_str()); // 利用你的全局编号
+  std::ofstream out(filename, std::ios::binary);
+  int32_t out_num_nodes = num_nodes;
+  out.write(reinterpret_cast<const char*>(&out_num_nodes), sizeof(int32_t));
+  out.write(reinterpret_cast<const char*>(&num_edges), sizeof(int32_t));
+
+  // 2. 写入三大块核心数据区
+  out.write(reinterpret_cast<const char*>(node_data.data()), node_data.size() * sizeof(float));
+  out.write(reinterpret_cast<const char*>(edge_indices.data()), edge_indices.size() * sizeof(int32_t));
+  out.write(reinterpret_cast<const char*>(edge_attrs.data()), edge_attrs.size() * sizeof(float));
+
+  out.close();
+
+  tbox::pout << ">>> Binary export done! " << num_nodes << " nodes, " << num_edges << " edges." << endl;
 
 
 }

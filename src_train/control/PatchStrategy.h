@@ -832,6 +832,9 @@ private:
   tbox::Array<int> inlet_velocity_mark_id;
   tbox::Array<int> wall_velocity_mark_id;
 
+  tbox::Array<double> model_boundary;
+  tbox::Array<double> thermal_map_xy;
+
   /// 输入数据库指针.
   tbox::Pointer<tbox::Database> d_input_db;
 

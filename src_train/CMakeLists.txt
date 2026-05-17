@@ -1,13 +1,14 @@
 cmake_minimum_required(VERSION 3.3)
 
-project(OptiFluidHeat CXX C Fortran)
-
+project(LinearElasticSolver CXX C Fortran)
+# 禁止 CMake 把第三方库作为 system include 引入
+#set(CMAKE_NO_SYSTEM_FROM_IMPORTED ON)
 set(NDIM 3)
-set(CREL dbg)
+set(CREL opt)
 
-set(libfind_ROOT "/opt/jaumin1.10")
-set(JAUMIN_ROOT  "/opt/jaumin1.10")
-set(JPSOL_ROOT   "/opt/jaumin1.10")
+set(libfind_ROOT "/opt/jaumin")
+set(JAUMIN_ROOT  "/opt/jaumin")
+set(JPSOL_ROOT   "/opt/jaumin")
 list(INSERT CMAKE_MODULE_PATH 0 ${libfind_ROOT}/share/cmake/Modules/scns)
 list(APPEND CMAKE_MODULE_PATH   ${JAUMIN_ROOT}/share/cmake/Modules/scns)
 list(APPEND CMAKE_MODULE_PATH   ${JPSOL_ROOT}/share/cmake/Modules/scns)
@@ -17,10 +18,13 @@ set(JAUMIN_NDIM   ${NDIM})
 set(JAUMIN_CREL   ${CREL})
 set(JPSOL_NDIM    ${NDIM})
 set(JPSOL_CREL    ${CREL})
-
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel." FORCE)
+  message(STATUS "Defaulting to Release build for performance.")
+endif()
 
 # 设置 CGAL 的安装路径
-set(CGAL_DIR /home/Dev/CGAL/cgal-releases-CGAL-4.13)
+set(CGAL_DIR /home/yinda/packages/cgal-releases-CGAL-4.13.2)
 find_package(CGAL REQUIRED)
 include(LibFindMacros)
 libfind_check_external_packages(deps NAMES JPSOL ${JPSOL_BACKEND} mpi openmp REQUIRED)

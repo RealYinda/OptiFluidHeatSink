@@ -2467,26 +2467,27 @@ void PatchStrategy::applyTh_Load(hier::Patch<NDIM>& patch, const double time,
   patch.getPatchTopology()->getFaceAdjacencyNodes(face_node_ext,face_node_idx);
   // 自由度信息中的映射信息。
   int* dof_map = T_dof_info->getDOFMapping(patch, hier::EntityUtilities::NODE);
-  for(int r = 0; r < 10; r ++){
-    for(int c = 0; c < 2; c ++){
+  for(int r = 0; r < 2; r ++){
+    for(int c = 0; c < 10; c ++){
       if (HAS_ENTITY_SET(patch, power_in[r][c], FACE, 1)){
         DECLARE_ENTITY_SET(patch, load_list, power_in[r][c], FACE, 1);
         std::map<int, double>::iterator it = g_boundary_to_flux.find(power_in[r][c]);
         if (it != g_boundary_to_flux.end()) {
           double q = it->second;
           for(int ff = 0; ff < load_list.getSize(); ff++){
-            int face_node = face_node_ext[ff+1]-face_node_ext[ff];
+            int this_ff = load_list[ff];
+            int face_node = face_node_ext[this_ff+1]-face_node_ext[this_ff];
             double b[face_node];
             double k[face_node][face_node];
             int node_id[face_node];
             if(face_node == 3){
               //面上三角形的三个顶点编号
-              node_id[0]=face_node_idx[face_node_ext[ff]];//Face_idx[face]面的编号
-              node_id[1]=face_node_idx[face_node_ext[ff+1]];
-              node_id[2]=face_node_idx[face_node_ext[ff+2]];
+              node_id[0]=face_node_idx[face_node_ext[this_ff]];//Face_idx[face]面的编号
+              node_id[1]=face_node_idx[face_node_ext[this_ff]+1];
+              node_id[2]=face_node_idx[face_node_ext[this_ff]+2];
               tbox::Array<hier::DoubleVector<NDIM> > vertex(face_node);
               for (int k=0; k<face_node;k++){
-                for(int j=0; j<face_node;j++){
+                for(int j=0; j<NDIM;j++){
                   vertex[k][j]=(*node_coord)(j,node_id[k]);
                 }
               }
@@ -2500,13 +2501,13 @@ void PatchStrategy::applyTh_Load(hier::Patch<NDIM>& patch, const double time,
             } /// 四面体到此结束
             else if(face_node == 4){
               //面上四边形的四个顶点编号
-              node_id[0]=face_node_idx[face_node_ext[ff]];//Face_idx[face]面的编号
-              node_id[1]=face_node_idx[face_node_ext[ff]+1];
-              node_id[2]=face_node_idx[face_node_ext[ff]+2];
-              node_id[3]=face_node_idx[face_node_ext[ff]+3];
+              node_id[0]=face_node_idx[face_node_ext[this_ff]];//Face_idx[face]面的编号
+              node_id[1]=face_node_idx[face_node_ext[this_ff]+1];
+              node_id[2]=face_node_idx[face_node_ext[this_ff]+2];
+              node_id[3]=face_node_idx[face_node_ext[this_ff]+3];
               tbox::Array<hier::DoubleVector<NDIM> > vertex(face_node);
               for (int k=0; k<face_node;k++){
-                for(int j=0; j<face_node;j++){
+                for(int j=0; j<NDIM;j++){
                   vertex[k][j]=(*node_coord)(j,node_id[k]);
                 }
               }
@@ -2515,6 +2516,8 @@ void PatchStrategy::applyTh_Load(hier::Patch<NDIM>& patch, const double time,
               double area = area1 + area2;
               for (int i = 0; i < face_node; i++) {
                 b[i] =  q * area / 4.0;
+                // 随便抓一个正在施加热流的节点，打印它的 Z 坐标
+
               }
             }/// endof node4
             for (int i = 0; i < face_node; i++) {
@@ -4179,8 +4182,8 @@ void PatchStrategy::getFromInput(tbox::Pointer<tbox::Database> db) {
     // 匹配到矩阵开始标志
     else if (line.find("THERMAL_MAP_START") != std::string::npos) {
       // 循环 10 行 10 列，逐个浮点数读取
-      for (int r = 0; r < 10; ++r) {
-        for (int c = 0; c < 2; ++c) {
+      for (int r = 0; r < 2; ++r) {
+        for (int c = 0; c < 10; ++c) {
           double current_heat_flux = 0.0;
           sim_file >> current_heat_flux;
 
@@ -4714,44 +4717,46 @@ void PatchStrategy::ExportTrainingData(hier::Patch<NDIM> &patch, const double ti
       double y_idx = y / thermal_map_xy[1];
 
       // X 维度
-      int row = std::floor(x_idx);
-      row = std::max(0, std::min(row, 9));
+      // X 维度对应列 (0-9)
+      int ix = std::floor(x_idx);
+      ix = std::max(0, std::min(ix, 9));
 
-      // Y 维度
-      int col = std::floor(y_idx);
-      col = std::max(0, std::min(col, 1));
+      // Y 维度对应行 (0-1)
+      int iy = std::floor(y_idx);
+      iy = std::max(0, std::min(iy, 1));
 
-      // 默认取平坦内部的通量 (使用 .at 安全查询)
-      int power_face = power_in[row][col];
+      // 默认取平坦内部的通量 (核心修改：访问顺序变为 power_in[Y][X])
+      int power_face = power_in[iy][ix]; 
       double q_exact = g_boundary_to_flux.at(power_face);
 
       double rx_double = std::floor(x_idx + 0.5);
       double ry_double = std::floor(y_idx + 0.5);
-      int rx = static_cast<int>(rx_double); // X 边界索引
-      int ry = static_cast<int>(ry_double); // Y 边界索引
+      int rx = static_cast<int>(rx_double); // X 边界索引 (0 到 10)
+      int ry = static_cast<int>(ry_double); // Y 边界索引 (0 到 2)
 
       // 使用 1e-5 容差抵抗浮点数误差。并且排除最外围的全局边界
       bool on_x_edge = (std::abs(x_idx - rx_double) < 1e-5) && (rx > 0 && rx < 10);
       bool on_y_edge = (std::abs(y_idx - ry_double) < 1e-5) && (ry > 0 && ry < 2);
 
+      // --- 3. 跨界通量平均分配 (核心修改：全面替换 power_in[Y][X]) ---
       if (on_x_edge && !on_y_edge) {
-        // 落在垂直交界线 (左右均分，X 变，Y=col 不变)
-        double q_exact_1 = g_boundary_to_flux.at(power_in[rx - 1][col]);
-        double q_exact_2 = g_boundary_to_flux.at(power_in[rx][col]);
+        // 落在垂直交界线 (左右均分，X 变，Y=iy 不变)
+        double q_exact_1 = g_boundary_to_flux.at(power_in[iy][rx - 1]);
+        double q_exact_2 = g_boundary_to_flux.at(power_in[iy][rx]);
         q_exact = (q_exact_1 + q_exact_2) / 2.0;
       }
       else if (!on_x_edge && on_y_edge) {
-        // 落在水平交界线 (上下均分，X=row 不变，Y 变)
-        double q_exact_1 = g_boundary_to_flux.at(power_in[row][ry - 1]);
-        double q_exact_2 = g_boundary_to_flux.at(power_in[row][ry]);
+        // 落在水平交界线 (上下均分，X=ix 不变，Y 变)
+        double q_exact_1 = g_boundary_to_flux.at(power_in[ry - 1][ix]);
+        double q_exact_2 = g_boundary_to_flux.at(power_in[ry][ix]);
         q_exact = (q_exact_1 + q_exact_2) / 2.0;
       }
       else if (on_x_edge && on_y_edge) {
-        // 落在十字交叉点 (四个象限均分)
-        double q_exact_1 = g_boundary_to_flux.at(power_in[rx - 1][ry - 1]);
-        double q_exact_2 = g_boundary_to_flux.at(power_in[rx][ry - 1]);
-        double q_exact_3 = g_boundary_to_flux.at(power_in[rx - 1][ry]);
-        double q_exact_4 = g_boundary_to_flux.at(power_in[rx][ry]);
+        // 落在十字交叉点 (四个象限均分，XY都在变)
+        double q_exact_1 = g_boundary_to_flux.at(power_in[ry - 1][rx - 1]);
+        double q_exact_2 = g_boundary_to_flux.at(power_in[ry - 1][rx]);
+        double q_exact_3 = g_boundary_to_flux.at(power_in[ry][rx - 1]);
+        double q_exact_4 = g_boundary_to_flux.at(power_in[ry][rx]);
         q_exact = (q_exact_1 + q_exact_2 + q_exact_3 + q_exact_4) / 4.0;
       }
 
@@ -4759,11 +4764,11 @@ void PatchStrategy::ExportTrainingData(hier::Patch<NDIM> &patch, const double ti
       node_data[base + 8] = (float)q_exact;
     }
     // 目标真值 (Target Y)
-    node_data[base + 9]  = (float)(*T_plot)(0, i);
+    node_data[base + 9]  = max((float)293.15,(float)(*T_plot)(0, i));
     node_data[base + 10]  = (float)(*vel_plot)(0, i);
     node_data[base + 11]  = (float)(*vel_plot)(1, i);
     node_data[base + 12] = (float)(*vel_plot)(2, i);
-    node_data[base + 13] = (float)(*pre_plot)(0, i);
+    node_data[base + 13] = max((float)0.0,(float)(*pre_plot)(0, i));
 
     // 绝对坐标 (通常不用作输入，仅方便后期核对和画图)
     node_data[base + 14] = (float)x;
@@ -4771,7 +4776,6 @@ void PatchStrategy::ExportTrainingData(hier::Patch<NDIM> &patch, const double ti
     node_data[base + 16] = (float)z;
 
   }
-  DECLARE_ADJACENCY(patch,edge,node,Edge,Node);
   std::vector<int32_t> edge_indices;
   std::vector<float> edge_attrs;
   edge_indices.reserve(num_cells * 15 * 2 * 2);

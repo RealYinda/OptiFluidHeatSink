@@ -9,13 +9,13 @@
 //
 // 根新情况：
 // update #6: 3处  -2017-05-03
-//分别在：@1：initializeLevelIntegrator   @2：getLevelDt    @3：acceptTimeDependentSolution三个函数处各一个
-
+// 分别在：@1：initializeLevelIntegrator   @2：getLevelDt
+// @3：acceptTimeDependentSolution三个函数处各一个
 
 #include "ElasFlow.h"
 #include "PatchStrategy.h"
-#include<iostream>
-#include<fstream>
+#include <fstream>
+#include <iostream>
 #ifdef DEBUG_CHECK_ASSERTIONS
 #include <assert.h>
 #endif
@@ -24,7 +24,7 @@
  * 构造函数.
  *************************************************************************/
 ElasFlow::ElasFlow(
-    const string& object_name,
+    const string &object_name,
     tbox::Pointer<algs::StandardComponentPatchStrategy<NDIM> > strategy,
     tbox::Pointer<tbox::Database> input_db) {
 #ifdef DEBUG_CHECK_ASSERTIONS
@@ -38,13 +38,13 @@ ElasFlow::ElasFlow(
   d_fem_db = input_db;
   d_solver_manager = solv::LinearSolverManager<NDIM>::getManager();
   d_solver_s = d_solver_manager->lookupLinearSolver(
-        d_solver_db->getDatabase ("SolverT")->getString("solver_name"));
+      d_solver_db->getDatabase("SolverT")->getString("solver_name"));
   d_solver_th = d_solver_manager->lookupLinearSolver(
-        d_solver_db->getDatabase ("SolverTH2")->getString("solver_name"));
+      d_solver_db->getDatabase("SolverTH2")->getString("solver_name"));
   d_solver_E = d_solver_manager->lookupLinearSolver(
-        d_solver_db->getDatabase ("SolverE")->getString("solver_name"));
+      d_solver_db->getDatabase("SolverE")->getString("solver_name"));
   d_solver_F = d_solver_manager->lookupLinearSolver(
-        d_solver_db->getDatabase ("SolverF")->getString("solver_name"));
+      d_solver_db->getDatabase("SolverF")->getString("solver_name"));
   d_object_name = object_name;
   t_fem_build_matrix =
       tbox::TimerManager::getManager()->getTimer("ELAS::FEM::buildMatrix");
@@ -69,106 +69,104 @@ void ElasFlow::initializeLevelIntegrator(
     tbox::Pointer<algs::IntegratorComponentManager<NDIM> > manager) {
   /// 初始化构件.
   d_init_intc = new algs::InitializeIntegratorComponent<NDIM>(
-        "INIT", d_patch_strategy, manager);
+      "INIT", d_patch_strategy, manager);
   // 数值构件: 更新结点坐标.
   d_num_intc_displacement = new algs::NumericalIntegratorComponent<NDIM>(
-        "DISPLACEMENT", d_patch_strategy, manager);
+      "DISPLACEMENT", d_patch_strategy, manager);
   // 数值构件: 计算应力.
   d_num_intc_stress = new algs::NumericalIntegratorComponent<NDIM>(
-        "STRESS", d_patch_strategy, manager);
+      "STRESS", d_patch_strategy, manager);
   /// 数值构件：更新恢复应力
   d_num_intc_recovery = new algs::NumericalIntegratorComponent<NDIM>(
-        "RECOVERY", d_patch_strategy, manager);
+      "RECOVERY", d_patch_strategy, manager);
   /// 数值构件：将更新的恢复应力平均后整理输出
   d_num_intc_postprocess = new algs::NumericalIntegratorComponent<NDIM>(
-        "POSTPROCESS", d_patch_strategy, manager);
+      "POSTPROCESS", d_patch_strategy, manager);
   /// 数值构件：数据采集并做定量分析
   d_num_intc_data_explorer = new algs::NumericalIntegratorComponent<NDIM>(
-        "DATAEXPLORE", d_patch_strategy, manager);
+      "DATAEXPLORE", d_patch_strategy, manager);
   d_num_intc_training_explorer = new algs::NumericalIntegratorComponent<NDIM>(
-        "TRAINING", d_patch_strategy, manager);
-
+      "TRAINING", d_patch_strategy, manager);
 
   /// 数值构件：做和温度场相关的后处理
   d_num_intc_thermal_post = new algs::NumericalIntegratorComponent<NDIM>(
-        "THERMALPOST", d_patch_strategy, manager);
-
+      "THERMALPOST", d_patch_strategy, manager);
 
   // 数值构件: 计算矩阵.
   d_num_intc_mat = new algs::NumericalIntegratorComponent<NDIM>(
-        "MAT", d_patch_strategy, manager);
+      "MAT", d_patch_strategy, manager);
   // 数值构件: 计算右端项.
   d_num_intc_rhs = new algs::NumericalIntegratorComponent<NDIM>(
-        "RHS", d_patch_strategy, manager);
+      "RHS", d_patch_strategy, manager);
   // 数值构件: 计算载荷.
   d_num_intc_load = new algs::NumericalIntegratorComponent<NDIM>(
-        "LOAD", d_patch_strategy, manager);
+      "LOAD", d_patch_strategy, manager);
   // 数值构件: 计算约束.
   d_num_intc_cons = new algs::NumericalIntegratorComponent<NDIM>(
-        "CONS", d_patch_strategy, manager);
+      "CONS", d_patch_strategy, manager);
   // 内存构件： 管理数据片的内存开辟及释放
   d_alloc_data = new algs::MemoryIntegratorComponent<NDIM>(
-        "ALLOC", d_patch_strategy, manager);
+      "ALLOC", d_patch_strategy, manager);
   d_alloc_fluid_data = new algs::MemoryIntegratorComponent<NDIM>(
-        "ALLOC_F", d_patch_strategy, manager);
+      "ALLOC_F", d_patch_strategy, manager);
 
-  //update #6
-  // 步长构件： 计算时间步长
-  d_dt_update = new algs::DtIntegratorComponent<NDIM>("Dt", d_patch_strategy, manager);
+  // update #6
+  //  步长构件： 计算时间步长
+  d_dt_update =
+      new algs::DtIntegratorComponent<NDIM>("Dt", d_patch_strategy, manager);
 
-  //update #8 热计算数值构件
-  // 数值构件: 计算矩阵.
+  // update #8 热计算数值构件
+  //  数值构件: 计算矩阵.
   th_num_intc_mat = new algs::NumericalIntegratorComponent<NDIM>(
-        "TH_MAT", d_patch_strategy, manager);
+      "TH_MAT", d_patch_strategy, manager);
   // 数值构件: 计算右端项.
   th_num_intc_rhs = new algs::NumericalIntegratorComponent<NDIM>(
-        "TH_RHS", d_patch_strategy, manager);
+      "TH_RHS", d_patch_strategy, manager);
   // 数值构件: 计算载荷.
   th_num_intc_load = new algs::NumericalIntegratorComponent<NDIM>(
-        "TH_LOAD", d_patch_strategy, manager);
+      "TH_LOAD", d_patch_strategy, manager);
   // 数值构件: 计算约束.  Thermal_PostProcesing
   th_num_intc_cons = new algs::NumericalIntegratorComponent<NDIM>(
-        "TH_CONS", d_patch_strategy, manager);
+      "TH_CONS", d_patch_strategy, manager);
   th_num_intc_plot = new algs::NumericalIntegratorComponent<NDIM>(
-        "TH_PLOT", d_patch_strategy, manager);
-
+      "TH_PLOT", d_patch_strategy, manager);
 
   // 数值构件: 计算矩阵.
   F_stokes_num_intc_mat = new algs::NumericalIntegratorComponent<NDIM>(
-        "F_MAT_INIT", d_patch_strategy, manager);
+      "F_MAT_INIT", d_patch_strategy, manager);
   // 数值构件: 计算右端项.
   F_num_intc_rhs = new algs::NumericalIntegratorComponent<NDIM>(
-        "F_RHS", d_patch_strategy, manager);
+      "F_RHS", d_patch_strategy, manager);
   // 数值构件: 计算约束.  Thermal_PostProcesing
   F_stokes_num_intc_cons = new algs::NumericalIntegratorComponent<NDIM>(
-        "F_CONS_INIT", d_patch_strategy, manager);
+      "F_CONS_INIT", d_patch_strategy, manager);
   F_num_intc_update = new algs::NumericalIntegratorComponent<NDIM>(
-        "F_UPDATE", d_patch_strategy, manager);
+      "F_UPDATE", d_patch_strategy, manager);
 
   F_num_intc_resid = new algs::NumericalIntegratorComponent<NDIM>(
-        "F_RHS_RES", d_patch_strategy, manager);
+      "F_RHS_RES", d_patch_strategy, manager);
   F_num_intc_jacob = new algs::NumericalIntegratorComponent<NDIM>(
-        "F_MAT_RES", d_patch_strategy, manager);
+      "F_MAT_RES", d_patch_strategy, manager);
   F_num_intc_cons = new algs::NumericalIntegratorComponent<NDIM>(
-        "F_CONS_RES", d_patch_strategy, manager);
+      "F_CONS_RES", d_patch_strategy, manager);
 
-  //update #9 电计算数值构件
-  // 数值构件: 计算矩阵.
+  // update #9 电计算数值构件
+  //  数值构件: 计算矩阵.
   E_num_intc_mat = new algs::NumericalIntegratorComponent<NDIM>(
-        "E_MAT", d_patch_strategy, manager);
+      "E_MAT", d_patch_strategy, manager);
   // 数值构件: 计算右端项.
   E_num_intc_rhs = new algs::NumericalIntegratorComponent<NDIM>(
-        "E_RHS", d_patch_strategy, manager);
+      "E_RHS", d_patch_strategy, manager);
   // 数值构件: 计算约束.  Thermal_PostProcesing
   E_num_intc_cons = new algs::NumericalIntegratorComponent<NDIM>(
-        "E_CONS", d_patch_strategy, manager);
+      "E_CONS", d_patch_strategy, manager);
   E_num_intc_plot = new algs::NumericalIntegratorComponent<NDIM>(
-        "E_PLOT", d_patch_strategy, manager);
+      "E_PLOT", d_patch_strategy, manager);
 
-  d_Max_T_intc=new algs::ReductionIntegratorComponent<NDIM>(
-        "Max_T",MPI_MAX, d_patch_strategy, manager);
-  d_Max_Stress_intc=new algs::ReductionIntegratorComponent<NDIM>(
-        "Stress_T",MPI_MAX, d_patch_strategy, manager);
+  d_Max_T_intc = new algs::ReductionIntegratorComponent<NDIM>(
+      "Max_T", MPI_MAX, d_patch_strategy, manager);
+  d_Max_Stress_intc = new algs::ReductionIntegratorComponent<NDIM>(
+      "Stress_T", MPI_MAX, d_patch_strategy, manager);
 }
 
 /*************************************************************************
@@ -185,7 +183,7 @@ void ElasFlow::initializeLevelData(
   d_init_intc->initializeLevelData(level, init_data_time, initial_time);
 }
 
-//update #6
+// update #6
 /*************************************************************************
  * 计算时间步长.
  *
@@ -193,15 +191,15 @@ void ElasFlow::initializeLevelData(
  * 该构件对象又进一步调用 d_patch_strategy->getPatchDt(),
  * 逐个网格片地计算时间步长.
  ************************************************************************/
-double ElasFlow::getLevelDt(
-    const tbox::Pointer<hier::BasePatchLevel<NDIM> > level,
-    const double dt_time, const bool initial_time, const int flag_last_dt,
-    const double last_dt) {
+double
+ElasFlow::getLevelDt(const tbox::Pointer<hier::BasePatchLevel<NDIM> > level,
+                     const double dt_time, const bool initial_time,
+                     const int flag_last_dt, const double last_dt) {
 #ifdef DEBUG_CHECK_ASSERTIONS
   TBOX_ASSERT(!level.isNull());
 #endif
-  return (d_dt_update->getLevelDt(level, dt_time, initial_time,
-                                  flag_last_dt, last_dt, false));
+  return (d_dt_update->getLevelDt(level, dt_time, initial_time, flag_last_dt,
+                                  last_dt, false));
 }
 
 /*************************************************************************
@@ -215,7 +213,7 @@ int ElasFlow::advanceLevel(
     const tbox::Pointer<hier::BasePatchLevel<NDIM> > level,
     const double current_time, const double predict_dt, const double max_dt,
     const double min_dt, const bool first_step, const int step_number,
-    double& actual_dt) {
+    double &actual_dt) {
 #ifdef DEBUG_CHECK_ASSERTIONS
   assert(!level.isNull());
 #endif
@@ -227,16 +225,18 @@ int ElasFlow::advanceLevel(
 
 #if FLUID_COMPUTATION
   double target_velocity = p_strategy->get_inlet_velocity();
-  double starting_velocity = 0.2;
-  starting_velocity = min(target_velocity, 0.2);
-  if (step_number == 0){
+  double starting_velocity = 0.1;
+
+  starting_velocity = min(target_velocity, 0.1);
+  if (step_number == 0) {
     /// ========================================================
     /// “初始猜测值”
     /// ========================================================
-    d_alloc_fluid_data->allocatePatchData(patch_level, current_time + predict_dt);
+    d_alloc_fluid_data->allocatePatchData(patch_level,
+                                          current_time + predict_dt);
     tbox::pout << "**************************";
     tbox::pout << "--- Initial value for N-S system ---";
-    tbox::pout << "**************************"<<endl;
+    tbox::pout << "**************************" << endl;
     p_strategy->omega_here = false;
 
     p_strategy->set_inlet_velocity(starting_velocity);
@@ -248,8 +248,9 @@ int ElasFlow::advanceLevel(
     int delta_id_F = p_strategy->getF_DeltaID();
     d_solver_F->setMatrix(mat_id_F);
     d_solver_F->setRHS(vec_id_F);
-    d_solver_F->solve(first_step, delta_id_F, patch_level, d_solver_db->getDatabase ("SolverF"));
-    tbox::pout<<"Update pressure and velocity data ......"<<endl;
+    d_solver_F->solve(first_step, delta_id_F, patch_level,
+                      d_solver_db->getDatabase("SolverF_init"));
+    tbox::pout << "Update pressure and velocity data ......" << endl;
     F_num_intc_update->computing(patch_level, current_time, actual_dt);
     d_alloc_fluid_data->deallocatePatchData(patch_level);
     p_strategy->omega_here = true;
@@ -257,24 +258,25 @@ int ElasFlow::advanceLevel(
   int num_continuation_steps = 100;
 
   double here_velocity = 0.;
-  for(int c_step = 0; c_step < num_continuation_steps; c_step ++){
-    here_velocity = min(target_velocity,starting_velocity+c_step*0.02);
+  for (int c_step = 0; c_step < num_continuation_steps; c_step++) {
+    here_velocity = min(target_velocity, starting_velocity + c_step * 0.01);
     p_strategy->set_inlet_velocity(here_velocity);
     tbox::pout << "**************************";
-    tbox::pout << "--- Here sweep velocity: " << here_velocity << " ---" ;
-    tbox::pout << "**************************"<<endl;
-    /// ========================================================
-    /// Newton-Raphson iterations
-    /// ========================================================
-    #if NEWTON_RAPHSON
+    tbox::pout << "--- Here sweep velocity: " << here_velocity << " ---";
+    tbox::pout << "**************************" << endl;
+/// ========================================================
+/// Newton-Raphson iterations
+/// ========================================================
+#if NEWTON_RAPHSON
     int max_newton_iter = 300;
     double current_error = 1.0;
     int iter = 0;
-    while (iter < max_newton_iter && current_error > 1e-5){
-      d_alloc_fluid_data->allocatePatchData(patch_level, current_time + predict_dt);
+    while (iter < max_newton_iter && current_error > 1e-4) {
+      d_alloc_fluid_data->allocatePatchData(patch_level,
+                                            current_time + predict_dt);
       tbox::pout << "**************************";
-      tbox::pout << "--- Newton-Raphson iteration number: " << iter << " ---" ;
-      tbox::pout << "**************************"<<endl;
+      tbox::pout << "--- Newton-Raphson iteration number: " << iter << " ---";
+      tbox::pout << "**************************" << endl;
       p_strategy->iter_num = iter;
       F_num_intc_resid->computing(patch_level, current_time, actual_dt);
       F_num_intc_jacob->computing(patch_level, current_time, actual_dt);
@@ -285,24 +287,23 @@ int ElasFlow::advanceLevel(
       int sol_id_F = p_strategy->getF_SolutionID();
       d_solver_F->setMatrix(mat_id_F);
       d_solver_F->setRHS(vec_id_F);
-      d_solver_F->solve(first_step, delta_id_F, patch_level, d_solver_db->getDatabase ("SolverF"));
+      d_solver_F->solve(first_step, delta_id_F, patch_level,
+                        d_solver_db->getDatabase("SolverF"));
       F_num_intc_update->computing(patch_level, current_time, 0.0);
       /// 判断是否收敛
       J_F_sol_vec = new JPSOL::JVector<NDIM, double>(patch_level, sol_id_F);
       J_F_delta_vec = new JPSOL::JVector<NDIM, double>(patch_level, delta_id_F);
       double sol_L2Norm = J_F_sol_vec->l2Norm();
       double delta_L2Norm = J_F_delta_vec->l2Norm();
-      current_error = delta_L2Norm/(sol_L2Norm+1e-15);
-      tbox::pout << "    Iter: " << iter
-                 << " | Delta Norm: " << delta_L2Norm
+      current_error = delta_L2Norm / (sol_L2Norm + 1e-15);
+      tbox::pout << "    Iter: " << iter << " | Delta Norm: " << delta_L2Norm
                  << " | Rel Error: " << current_error << endl;
       d_alloc_fluid_data->deallocatePatchData(patch_level);
-      iter ++;
-
+      iter++;
     }
 #endif
-    if(here_velocity>=target_velocity) break;
-
+    if (here_velocity >= target_velocity)
+      break;
   }
 
 #endif
@@ -310,17 +311,14 @@ int ElasFlow::advanceLevel(
   /// 为矩阵向量开辟内存
   d_alloc_data->allocatePatchData(patch_level, current_time + predict_dt);
 
-
-
-
   t_fem_solve->start();
-  double max[3]={0,0,0};
+  double max[3] = {0, 0, 0};
 #if ELECTRIC_COMPUTATION
   ///////////////////////////////////////////////////////////////////////////////////////////
-  //update #9 电计算
+  // update #9 电计算
   tbox::pout << "**************************";
   tbox::pout << "电场方程求解中";
-  tbox::pout << "**************************"<<endl;
+  tbox::pout << "**************************" << endl;
   E_num_intc_mat->computing(patch_level, current_time, actual_dt);
   /// 调用数值构件接口函数,加载约束
   E_num_intc_cons->computing(patch_level, current_time, actual_dt);
@@ -328,18 +326,17 @@ int ElasFlow::advanceLevel(
   /// 调用数值构件接口函数,计算并组装右端项
   E_num_intc_rhs->computing(patch_level, current_time, actual_dt);
 
-
-
   int mat_id_E = p_strategy->getE_MatrixID();
   int vec_id_E = p_strategy->getE_RHSID();
   int sol_id_E = p_strategy->getE_SolutionID();
 
   d_solver_E->setMatrix(mat_id_E);
   d_solver_E->setRHS(vec_id_E);
-  d_solver_E->solve(first_step, sol_id_E, patch_level, d_solver_db->getDatabase ("SolverE"));
+  d_solver_E->solve(first_step, sol_id_E, patch_level,
+                    d_solver_db->getDatabase("SolverE"));
   tbox::pout << "**************************";
-  tbox::pout<<"电场方程求解结束，正在进行后处理";
-  tbox::pout << "**************************"<<endl;
+  tbox::pout << "电场方程求解结束，正在进行后处理";
+  tbox::pout << "**************************" << endl;
 
   E_num_intc_plot->computing(patch_level, current_time, actual_dt, false);
 #endif
@@ -347,10 +344,9 @@ int ElasFlow::advanceLevel(
 
 #if THERMAL_COMPUTATION
   ///////////////////////////////////////////////////////////////////////////////////////////
-  tbox::pout<<"热传导方程求解中...... "<<endl;
+  tbox::pout << "热传导方程求解中...... " << endl;
 
-
-  //update #8 热计算
+  // update #8 热计算
   th_num_intc_mat->computing(patch_level, current_time, actual_dt);
   /// 调用数值构件接口函数,加载载荷
   th_num_intc_load->computing(patch_level, current_time, actual_dt);
@@ -360,40 +356,39 @@ int ElasFlow::advanceLevel(
   /// 调用数值构件接口函数,计算并组装右端项
   th_num_intc_rhs->computing(patch_level, current_time, actual_dt);
 
-
-
-
-
   int mat_id_th = p_strategy->getTh_MatrixID();
   int vec_id_th = p_strategy->getTh_RHSID();
   int sol_id_th = p_strategy->getTh_SolutionID();
 
   d_solver_th->setMatrix(mat_id_th);
   d_solver_th->setRHS(vec_id_th);
-  d_solver_th->solve(first_step, sol_id_th, patch_level, d_solver_db->getDatabase ("SolverTH2"));
-  tbox::pout<<"结束热传导方程计算，正在进行后处理 "<<endl;
+  d_solver_th->solve(first_step, sol_id_th, patch_level,
+                     d_solver_db->getDatabase("SolverTH2"));
+  tbox::pout << "结束热传导方程计算，正在进行后处理 " << endl;
   th_num_intc_plot->computing(patch_level, current_time, actual_dt, false);
   d_Max_T_intc->reduction(&max[0], 1, patch_level, current_time, actual_dt);
-//  d_num_intc_thermal_post->computing(patch_level, current_time, actual_dt, false);
+  //  d_num_intc_thermal_post->computing(patch_level, current_time, actual_dt,
+  //  false);
 
-  if (tbox::MPI::getRank() == 0){
+  if (tbox::MPI::getRank() == 0) {
     ofstream outdata;
-    outdata.open("T_max",ios::app);
-    outdata<<current_time+actual_dt<<"\t"<<max[0]<<endl;
+    outdata.open("T_max", ios::app);
+    outdata << current_time + actual_dt << "\t" << max[0] << endl;
   }
-  #endif
-  /////////////////////////////////////////////////////////////////////////////////////////////
-  #if ELASTIC_COMPUTATION
-  //计时开始函数
+#endif
+/////////////////////////////////////////////////////////////////////////////////////////////
+#if ELASTIC_COMPUTATION
+  // 计时开始函数
   t_fem_build_matrix->start();
-  tbox::pout<<"Compute Cauchy momentum equations...... "<<endl;
+  tbox::pout << "Compute Cauchy momentum equations...... " << endl;
   /// 调用数值构件接口函数,计算并组装矩阵
-  //该函数会自动调用用户实现的 algs::StandardComponentPatchStrategy::computeOnPatch().
+  // 该函数会自动调用用户实现的
+  // algs::StandardComponentPatchStrategy::computeOnPatch().
   d_num_intc_mat->computing(patch_level, current_time, actual_dt);
   //  cout<<"Matrix is ok "<<endl;
   /// 调用数值构件接口函数,计算并组装右端项
   d_num_intc_rhs->computing(patch_level, current_time, actual_dt);
-  //cout<<"RHS is ok "<<endl;
+  // cout<<"RHS is ok "<<endl;
   /// 调用数值构件接口函数,加载载荷
   d_num_intc_load->computing(patch_level, current_time, actual_dt);
   //  cout<<"load is ok "<<endl;
@@ -401,7 +396,6 @@ int ElasFlow::advanceLevel(
   d_num_intc_cons->computing(patch_level, current_time, actual_dt);
   //  cout<<"constrain is ok "<<endl;
   t_fem_build_matrix->stop();
-
 
   int mat_id = p_strategy->getMatrixID();
   int vec_id = p_strategy->getRHSID();
@@ -411,15 +405,17 @@ int ElasFlow::advanceLevel(
   d_solver_s->setMatrix(mat_id);
   d_solver_s->setRHS(vec_id);
 
-  tbox::pout<<"solving "<<endl;
+  tbox::pout << "solving " << endl;
   /// 求解
-  d_solver_s->solve(first_step, sol_id, patch_level, d_solver_db->getDatabase ("SolverT"));
+  d_solver_s->solve(first_step, sol_id, patch_level,
+                    d_solver_db->getDatabase("SolverT"));
   t_fem_solve->stop();
   /// 调用数值构件接口函数, 根据位移更新结点坐标.
-  d_num_intc_displacement->computing(patch_level, current_time, actual_dt,false);
+  d_num_intc_displacement->computing(patch_level, current_time, actual_dt,
+                                     false);
   /// 调用数值构件接口函数, 计算应力.
   d_num_intc_stress->computing(patch_level, current_time, actual_dt, false);
-  #if 0
+#if 0
   tbox::pout<<"recovery "<<endl;
   t_fem_post->start();
   d_num_intc_recovery->computing(patch_level, current_time, actual_dt, false);
@@ -429,28 +425,31 @@ int ElasFlow::advanceLevel(
   tbox::pout<<"dataexplorer "<<endl;
   if(1)
     d_num_intc_data_explorer->computing(patch_level, current_time, actual_dt, false);
-  #endif
-  d_Max_Stress_intc->reduction(&max[1], 2, patch_level, current_time, actual_dt);
-  if (tbox::MPI::getRank() == 0){
+#endif
+  d_Max_Stress_intc->reduction(&max[1], 2, patch_level, current_time,
+                               actual_dt);
+  if (tbox::MPI::getRank() == 0) {
     ofstream outSdata;
-    outSdata.open("max_Stress",ios::app);
-    outSdata<<current_time+actual_dt<<"\t"<<max[1]<<endl;
+    outSdata.open("max_Stress", ios::app);
+    outSdata << current_time + actual_dt << "\t" << max[1] << endl;
     ofstream outDdata;
-    outDdata.open("max_disp",ios::app);
-    outDdata<<current_time+actual_dt<<"\t"<<max[2]<<endl;
-
+    outDdata.open("max_disp", ios::app);
+    outDdata << current_time + actual_dt << "\t" << max[2] << endl;
   }
 
-  #endif
+#endif
+
   d_alloc_data->deallocatePatchData(patch_level);
 
   actual_dt = predict_dt;
-
-
+#if TRAINING
+  tbox::pout << "导出训练数据" << endl;
+  d_num_intc_training_explorer->computing(patch_level, current_time, actual_dt);
+#endif
   return (0);
 }
 
-//update #6
+// update #6
 /*************************************************************************
  * 接收数值解.
  *
